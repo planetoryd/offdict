@@ -1,4 +1,3 @@
-
 use clap::Command;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use serde::de::IntoDeserializer;
@@ -7,6 +6,10 @@ use serde_yaml::{self, value};
 
 use std;
 
+use bson::{self, Array, Serializer};
+use flexbuffers;
+use fuzzy_trie::FuzzyTrie;
+use rocksdb::{DBCommon, MergeOperands, Options, SingleThreaded, ThreadMode, DB};
 use std::cmp::min;
 use std::collections::BTreeMap;
 use std::collections::{BTreeSet, HashMap};
@@ -16,10 +19,6 @@ use std::ffi::OsString;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use flexbuffers;
-use bson::{self, Array, Serializer};
-use fuzzy_trie::FuzzyTrie;
-use rocksdb::{DBCommon, MergeOperands, Options, SingleThreaded, ThreadMode, DB};
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
@@ -31,12 +30,10 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    yaml {
-        path: String,
-        #[arg(required = false)]
-        query: Option<String>,
-    },
+    yaml { path: String },
     stat {},
+    trie {},
+    lookup { query: String },
 }
 
 // Defs are merged into one single Def
@@ -69,8 +66,7 @@ fn def_merge(
     let x;
     match existing_val {
         Some(bytes) => {
-            
-            let p = bson::from_slice::<Def>(existing_val.unwrap());
+            let p = flexbuffers::from_slice::<Def>(existing_val.unwrap());
             match p {
                 Ok(mut d) => {
                     if !d._wrapper {
@@ -92,7 +88,7 @@ fn def_merge(
     }
 
     for bytes in ops {
-        match bson::from_slice::<Def>(bytes) {
+        match flexbuffers::from_slice::<Def>(bytes) {
             Ok(mut parsed) => {
                 parsed.index = None; // remove it
                 set.insert(parsed)
@@ -103,19 +99,31 @@ fn def_merge(
 
     wrapper.definitions = Some(set.into_iter().collect());
 
-    Some(bson::to_raw_document_buf(&wrapper).unwrap().into_bytes())
+    Some(flexbuffers::to_vec(&wrapper).unwrap())
 }
 
 // Updates word-def mappings, deduping dup defs
-fn import_defs<'a>(defs: &'a Vec<Def>, db: &DB, trie: &mut FuzzyTrie<'a, &'a str>) {
+fn import_defs<'a>(defs: &'a Vec<Def>, db: &DB, trie: &mut FuzzyTrie<'a, String>) {
     // let mut trie: FuzzyTrie<&'a str> = FuzzyTrie::new(2, false);
     for def in defs {
         db.merge(
             def.word.as_ref().unwrap().as_str(),
-            bson::to_raw_document_buf(&def).unwrap().as_bytes(),
+            flexbuffers::to_vec(def).unwrap(),
         );
-        trie.insert(def.word.as_ref().unwrap().as_str())
-            .insert(def.word.as_ref().unwrap().as_str()); // It does work with one key to multi values
+        // There is no check for duplicates
+
+        trie.insert(def.word.as_ref().unwrap())
+            .insert_unique(def.word.clone().unwrap()); // It does work with one key to multi values
+    }
+}
+
+fn rebuild_trie<'a>(db: &DB, trie: &mut FuzzyTrie<'a, String>) {
+    let iter = db.iterator(rocksdb::IteratorMode::Start);
+    for x in iter {
+        if let Ok((key, val)) = x {
+            let stri = String::from_utf8(key.to_vec()).unwrap();
+            trie.insert(stri.as_str()).insert(stri.clone());
+        }
     }
 }
 
@@ -128,22 +136,22 @@ fn open_db(path: &str) -> DB {
     DB::open(&opts, path).unwrap()
 }
 
-fn load_trie<'a>(path: &str, buf: &'a mut Vec<u8>) -> FuzzyTrie<'a, &'a str> {
+fn load_trie<'a>(path: &str, buf: &'a mut Vec<u8>) -> FuzzyTrie<'a, String> {
     let mut file = match File::open(path) {
         Ok(f) => f,
         Err(e) => return FuzzyTrie::new(2, false),
     };
     file.read_to_end(buf);
-    let trie: FuzzyTrie<'a, &'a str> = bson::from_slice(buf).unwrap();
+    let trie: FuzzyTrie<'a, String> = flexbuffers::from_slice(buf).unwrap();
 
     trie
 }
 
-fn save_trie<'a>(path: &str, trie: &FuzzyTrie<'a, &'a str>) -> Result<(), Box<dyn Error>> {
-    let doc = bson::to_raw_document_buf(trie)?;
+fn save_trie<'a>(path: &str, trie: &FuzzyTrie<'a, String>) -> Result<(), Box<dyn Error>> {
+    let doc = flexbuffers::to_vec(trie)?;
     let mut file = File::create(path).expect("Unable to open file");
 
-    file.write_all(doc.into_bytes().as_slice());
+    file.write_all(&doc);
     Ok(())
 }
 
@@ -153,7 +161,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let trie_path = "./trie";
 
     match args.command {
-        Commands::yaml { path, query } => {
+        Commands::yaml { path } => {
             // Read yaml, put word defs in rocks, build a trie words -> words
 
             let mut file = File::open(path).expect("Unable to open file");
@@ -177,35 +185,51 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             // println!("{}", serde_yaml::to_string(&docs)?);
 
-            let mut key: Vec<(u8, &str)> = Vec::new();
-            if let Some(ref q) = query {
-                trie.prefix_fuzzy_search(q, &mut key); // Values of, keys that are close, are returned
-                let mut key_iter = key.into_iter();
-                println!("Distance {:?}", key_iter);
-                let mut arr: Vec<(u8, &str)> = key_iter.collect();
-                arr.sort_by_key(|x| x.0);
-                for d in db.multi_get(arr[..min(5, arr.len())].iter().map(|(d, str)| str)) {
-                    if let Ok(Some(by)) = d {
-                        // println!("{:?}", bson::from_slice::<Def>(by.as_slice()).unwrap())
-                        println!(
-                            "{}",
-                            serde_yaml::to_string(
-                                &bson::from_slice::<Def>(by.as_slice()).unwrap()
-                            )?
-                        )
-                    }
-                }
-            }
-
             save_trie(trie_path, &trie);
             Ok(())
         }
         Commands::stat {} => {
             let db = open_db(&db_path);
+            let mut trie_buf = Vec::new();
+            let mut trie = load_trie(trie_path, &mut trie_buf);
 
             if let Ok(Some(r)) = db.property_int_value("rocksdb.estimate-num-keys") {
                 println!("Words: {}", r);
             }
+            println!("Words in trie: {}", trie.into_values().len());
+            Ok(())
+        }
+        Commands::trie {} => {
+            let db = open_db(&db_path);
+            let mut trie: FuzzyTrie<String> = FuzzyTrie::new(2, false);
+            rebuild_trie(&db, &mut trie);
+            save_trie(&trie_path, &trie);
+            Ok(())
+        }
+        Commands::lookup { query } => {
+            let db = open_db(&db_path);
+            let mut trie_buf = Vec::new();
+            let mut trie = load_trie(trie_path, &mut trie_buf);
+
+            let mut key: Vec<(u8, &String)> = Vec::new();
+
+            trie.prefix_fuzzy_search(&query, &mut key); // Values of, keys that are close, are returned
+            let mut key_iter = key.into_iter();
+            // println!("Distance {:?}", key_iter);
+            let mut arr: Vec<(u8, &String)> = key_iter.collect();
+            arr.sort_by_key(|x| x.0);
+            let arr2 = arr[..min(3, arr.len())].iter();
+            println!("{:?}", arr2);
+            for d in db.multi_get(arr2.map(|(d, str)| str)) {
+                if let Ok(Some(by)) = d {
+                    // println!("{:?}", bson::from_slice::<Def>(by.as_slice()).unwrap())
+                    println!(
+                        "{}",
+                        serde_yaml::to_string(&flexbuffers::from_slice::<Def>(&by).unwrap())?
+                    )
+                }
+            }
+
             Ok(())
         }
     }
