@@ -4,6 +4,8 @@ use super::levenshtein_nfa::Distance;
 use super::levenshtein_nfa::{LevenshteinNFA, MultiState};
 use super::Index;
 
+use serde::{Deserialize, Serialize};
+
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct ParametricState {
     shape_id: u32,
@@ -23,6 +25,7 @@ impl ParametricState {
 }
 
 #[derive(Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Transition {
     dest_shape_id: u32,
     delta_offset: u32,
@@ -84,6 +87,7 @@ impl ParametricStateIndex {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ParametricDFA {
     distance: Vec<u8>,
     transitions: Vec<Transition>,

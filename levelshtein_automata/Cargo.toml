@@ -14,6 +14,7 @@ keywords = ["levenshtein", "automaton", "automata", "fuzzy"]
 
 [dependencies]
 fst = {version="0.4", optional=true, default-features=false}
+serde = { version = "1.0.147", features = ["derive"] }
 
 [dev-dependencies]
 levenshtein = "1.0"
