@@ -12,5 +12,5 @@ keywords = ["fuzzy", "trie", "levenshtein", "dictionary", "dict"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-levenshtein_automata = "0.2.1"
+levenshtein_automata = { path = "../levelshtein_automata" }
 serde = { version = "1.0.147", features = ["derive"] }

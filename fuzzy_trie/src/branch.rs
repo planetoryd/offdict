@@ -2,6 +2,8 @@ use levenshtein_automata::{DFA, Distance, SINK_STATE};
 use crate::Collector;
 use crate::Inserter;
 
+use serde::{Deserialize, Serialize};
+
 
 #[derive(Serialize, Deserialize)]
 #[derive(Clone, Debug)]

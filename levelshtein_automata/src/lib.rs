@@ -54,10 +54,14 @@ pub use self::levenshtein_nfa::Distance;
 use self::levenshtein_nfa::LevenshteinNFA;
 use self::parametric_dfa::ParametricDFA;
 
+use serde::{Deserialize, Serialize};
+
 /// Builder for Levenshtein Automata.
 ///
 /// It wraps a precomputed datastructure that allows to
 /// produce small (but not minimal) DFA.
+/// 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct LevenshteinAutomatonBuilder {
     parametric_dfa: ParametricDFA,
 }
