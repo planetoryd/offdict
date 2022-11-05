@@ -15,7 +15,7 @@
           "kind": "bin"
         }
       },
-      "args": ["yaml", "/hdd/OpenMdicts/dict.yaml"],
+      "args": ["lookup", "议会"],
       "cwd": "${workspaceFolder}"
     },
     {
