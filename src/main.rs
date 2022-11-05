@@ -30,9 +30,19 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    yaml { path: String },
+    #[command(
+        about = "Import definitions from an yaml file to rocksdb and fuzzytrie",
+        arg_required_else_help = true
+    )]
+    yaml {
+        #[arg(short = 'p')]
+        path: String,
+    },
+    #[command(about = "Stats")]
     stat {},
+    #[command(about = "Rebuild fuzzytrie from rocksdb")]
     trie {},
+    #[command(about = "Fuzzy query (prefix)")]
     lookup { query: String },
 }
 
@@ -110,7 +120,6 @@ fn import_defs<'a>(defs: &'a Vec<Def>, db: &DB, trie: &mut FuzzyTrie<'a, String>
             def.word.as_ref().unwrap().as_str(),
             flexbuffers::to_vec(def).unwrap(),
         );
-        // There is no check for duplicates
 
         trie.insert(def.word.as_ref().unwrap())
             .insert_unique(def.word.clone().unwrap()); // It does work with one key to multi values
@@ -122,7 +131,7 @@ fn rebuild_trie<'a>(db: &DB, trie: &mut FuzzyTrie<'a, String>) {
     for x in iter {
         if let Ok((key, val)) = x {
             let stri = String::from_utf8(key.to_vec()).unwrap();
-            trie.insert(stri.as_str()).insert(stri.clone());
+            trie.insert(stri.as_str()).insert_unique(stri.clone());
         }
     }
 }
@@ -139,7 +148,7 @@ fn open_db(path: &str) -> DB {
 fn load_trie<'a>(path: &str, buf: &'a mut Vec<u8>) -> FuzzyTrie<'a, String> {
     let mut file = match File::open(path) {
         Ok(f) => f,
-        Err(e) => return FuzzyTrie::new(2, false),
+        Err(e) => return FuzzyTrie::new(2, true),
     };
     file.read_to_end(buf);
     let trie: FuzzyTrie<'a, String> = flexbuffers::from_slice(buf).unwrap();
@@ -201,7 +210,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         Commands::trie {} => {
             let db = open_db(&db_path);
-            let mut trie: FuzzyTrie<String> = FuzzyTrie::new(2, false);
+            let mut trie: FuzzyTrie<String> = FuzzyTrie::new(2, true);
             rebuild_trie(&db, &mut trie);
             save_trie(&trie_path, &trie);
             Ok(())
@@ -214,12 +223,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut key: Vec<(u8, &String)> = Vec::new();
 
             trie.prefix_fuzzy_search(&query, &mut key); // Values of, keys that are close, are returned
-            let mut key_iter = key.into_iter();
-            // println!("Distance {:?}", key_iter);
-            let mut arr: Vec<(u8, &String)> = key_iter.collect();
+            let mut arr: Vec<(u8, &String)> = key.into_iter().collect();
             arr.sort_by_key(|x| x.0);
             let arr2 = arr[..min(3, arr.len())].iter();
+
             println!("{:?}", arr2);
+
             for d in db.multi_get(arr2.map(|(d, str)| str)) {
                 if let Ok(Some(by)) = d {
                     // println!("{:?}", bson::from_slice::<Def>(by.as_slice()).unwrap())
