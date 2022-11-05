@@ -1,0 +1,15 @@
+[package]
+name = "fuzzy_trie"
+version = "1.2.0"
+authors = ["VictorBulba"]
+edition = "2018"
+license = "MIT"
+repository = "https://github.com/VictorBulba/fuzzy_trie"
+description = "Key-value collection to make fuzzy searches"
+readme = "README.md"
+keywords = ["fuzzy", "trie", "levenshtein", "dictionary", "dict"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+levenshtein_automata = "0.2.1"
