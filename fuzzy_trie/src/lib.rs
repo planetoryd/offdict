@@ -18,6 +18,7 @@ pub use inserter::Inserter;
 pub use collector::Collector;
 pub use config::*;
 
+use serde::{Deserialize, Serialize};
 
 /// FuzzyTrie is a trie with a LevensteinAutomata to make fuzzy searches
 /// 
@@ -51,6 +52,8 @@ pub use config::*;
 /// assert_eq!(vanila_iter.next(), None);
 /// ```
 /// 
+/// 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct FuzzyTrie<T> {
     values: Vec<T>,
     root: Node,

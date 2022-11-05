@@ -13,3 +13,4 @@ keywords = ["fuzzy", "trie", "levenshtein", "dictionary", "dict"]
 
 [dependencies]
 levenshtein_automata = "0.2.1"
+serde = { version = "1.0.147", features = ["derive"] }

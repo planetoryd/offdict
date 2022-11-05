@@ -3,6 +3,7 @@ use crate::Collector;
 use crate::Inserter;
 
 
+#[derive(Serialize, Deserialize)]
 #[derive(Clone, Debug)]
 pub(crate) enum Node {
     // leaf and sub nodes

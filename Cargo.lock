@@ -166,10 +166,9 @@ dependencies = [
 [[package]]
 name = "fuzzy_trie"
 version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d63acf5bcf0a3b947bf00a9979d50af3992d0f862892db3f7f8628d13eaa6b41"
 dependencies = [
  "levenshtein_automata",
+ "serde",
 ]
 
 [[package]]
