@@ -1,7 +1,8 @@
+
 use clap::Command;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use serde::de::IntoDeserializer;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_yaml::{self, value};
 
 use std;
@@ -13,9 +14,9 @@ use std::error::Error;
 use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::PathBuf;
-
+use flexbuffers;
 use bson::{self, Array, Serializer};
 use fuzzy_trie::FuzzyTrie;
 use rocksdb::{DBCommon, MergeOperands, Options, SingleThreaded, ThreadMode, DB};
@@ -35,7 +36,7 @@ enum Commands {
         #[arg(required = false)]
         query: Option<String>,
     },
-    stat{},
+    stat {},
 }
 
 // Defs are merged into one single Def
@@ -68,6 +69,7 @@ fn def_merge(
     let x;
     match existing_val {
         Some(bytes) => {
+            
             let p = bson::from_slice::<Def>(existing_val.unwrap());
             match p {
                 Ok(mut d) => {
@@ -105,8 +107,8 @@ fn def_merge(
 }
 
 // Updates word-def mappings, deduping dup defs
-fn import_defs<'a>(defs: &'a Vec<Def>, db: &DB) -> FuzzyTrie<&'a str> {
-    let mut trie = FuzzyTrie::new(2, false);
+fn import_defs<'a>(defs: &'a Vec<Def>, db: &DB, trie: &mut FuzzyTrie<'a, &'a str>) {
+    // let mut trie: FuzzyTrie<&'a str> = FuzzyTrie::new(2, false);
     for def in defs {
         db.merge(
             def.word.as_ref().unwrap().as_str(),
@@ -115,13 +117,10 @@ fn import_defs<'a>(defs: &'a Vec<Def>, db: &DB) -> FuzzyTrie<&'a str> {
         trie.insert(def.word.as_ref().unwrap().as_str())
             .insert(def.word.as_ref().unwrap().as_str()); // It does work with one key to multi values
     }
-
-    trie
 }
 
-fn open_db() -> DB {
+fn open_db(path: &str) -> DB {
     let mut opts = Options::default();
-    let path = "rocks_t";
 
     opts.create_if_missing(true);
     opts.set_merge_operator_associative("defs", def_merge);
@@ -129,8 +128,30 @@ fn open_db() -> DB {
     DB::open(&opts, path).unwrap()
 }
 
+fn load_trie<'a>(path: &str, buf: &'a mut Vec<u8>) -> FuzzyTrie<'a, &'a str> {
+    let mut file = match File::open(path) {
+        Ok(f) => f,
+        Err(e) => return FuzzyTrie::new(2, false),
+    };
+    file.read_to_end(buf);
+    let trie: FuzzyTrie<'a, &'a str> = bson::from_slice(buf).unwrap();
+
+    trie
+}
+
+fn save_trie<'a>(path: &str, trie: &FuzzyTrie<'a, &'a str>) -> Result<(), Box<dyn Error>> {
+    let doc = bson::to_raw_document_buf(trie)?;
+    let mut file = File::create(path).expect("Unable to open file");
+
+    file.write_all(doc.into_bytes().as_slice());
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Cli::parse();
+    let db_path = "rocks_t";
+    let trie_path = "./trie";
+
     match args.command {
         Commands::yaml { path, query } => {
             // Read yaml, put word defs in rocks, build a trie words -> words
@@ -138,9 +159,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut file = File::open(path).expect("Unable to open file");
             let yaml_defs: Vec<Def> = serde_yaml::from_reader(file)?;
 
-            let db = open_db();
+            let db = open_db(&db_path);
 
-            let trie = import_defs(&yaml_defs, &db);
+            let mut trie_buf = Vec::new();
+            let mut trie = load_trie(trie_path, &mut trie_buf);
+            import_defs(&yaml_defs, &db, &mut trie);
 
             // match db.get(yaml_defs[0].word.as_ref().unwrap()) {
             //     Ok(Some(value)) => bson::from_slice::<Def>(value.as_slice()),
@@ -174,10 +197,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
             }
 
+            save_trie(trie_path, &trie);
             Ok(())
         }
-        Commands::stat{} => {
-            let db = open_db();
+        Commands::stat {} => {
+            let db = open_db(&db_path);
 
             if let Ok(Some(r)) = db.property_int_value("rocksdb.estimate-num-keys") {
                 println!("Words: {}", r);
@@ -223,14 +247,14 @@ fn default_as_false() -> bool {
 #[serde(untagged)]
 enum example {
     obj(example_obj),
-    str(Option<String>)
+    str(Option<String>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(untagged)]
 enum pronunciation {
     vec(Vec<Option<String>>),
-    str(Option<String>)
+    str(Option<String>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -240,4 +264,3 @@ struct example_obj {
     #[serde(skip_serializing_if = "Option::is_none")]
     EN: Option<String>,
 }
-
