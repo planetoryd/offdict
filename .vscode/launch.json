@@ -1,0 +1,36 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug executable 'offdict'",
+      "cargo": {
+        "args": ["build", "--bin=offdict", "--package=offdict"],
+        "filter": {
+          "name": "offdict",
+          "kind": "bin"
+        }
+      },
+      "args": ["yaml", "/hdd/OpenMdicts/dict.yaml"],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in executable 'offdict'",
+      "cargo": {
+        "args": ["test", "--no-run", "--bin=offdict", "--package=offdict"],
+        "filter": {
+          "name": "offdict",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}
