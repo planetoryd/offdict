@@ -14,3 +14,7 @@ I personally have some Chinese-English dictionary source files. I cleaned up the
 API: 
 - `127.0.0.1:3030/q/some_word_to_lookup`
 - `/stat/`
+
+Source files that work with it: https://github.com/planetoryd/OpenMdicts
+
+Import them with `offdict yaml -p '/hdd/OpenMdicts/<name>.yaml'`
