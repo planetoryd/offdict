@@ -161,8 +161,8 @@ impl<'b, T> FuzzyTrie<'b, T> {
     /// Destructs self into inner vec of values
     #[inline]
     #[allow(clippy::missing_const_for_fn)]
-    pub fn into_values(self) -> Vec<T> {
-        self.values
+    pub fn into_values(&self) -> &Vec<T> {
+        &self.values
     }
 
     /// Len of inner values vector
