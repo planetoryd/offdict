@@ -1,26 +1,24 @@
 use ciborium::{de::from_reader, ser::into_writer};
-use clap::Command;
-use clap::{Args, Parser, Subcommand, ValueEnum};
-use serde::de::IntoDeserializer;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_yaml::{self, value};
+
+use clap::{Parser, Subcommand};
+
+use serde::{Deserialize, Serialize};
+use serde_yaml::{self};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use std::{self, future};
+use std::{self};
 
 // use bson::{self, Array, Serializer};
 
 use fuzzy_trie::FuzzyTrie;
-use rocksdb::{DBCommon, MergeOperands, Options, SingleThreaded, ThreadMode, DB};
+use rocksdb::{MergeOperands, Options, DB};
 use std::cmp::min;
-use std::collections::BTreeMap;
-use std::collections::{BTreeSet, HashMap};
+
+use std::collections::BTreeSet;
 use std::error::Error;
-use std::ffi::OsStr;
-use std::ffi::OsString;
+
 use std::fs::File;
 use std::io::{Read, Write};
-use std::path::PathBuf;
 
 use percent_encoding;
 use tokio;
@@ -58,9 +56,9 @@ fn def_merge(
     existing_val: Option<&[u8]>,
     operands: &MergeOperands, // List of new values
 ) -> Option<Vec<u8>> {
-    let mut result: Vec<u8> = Vec::new();
-    let mut ops = Vec::from_iter(operands);
-    let mut def: Def;
+    let _result: Vec<u8> = Vec::new();
+    let ops = Vec::from_iter(operands);
+    let mut _def: Def;
     let mut set = BTreeSet::<Def>::new();
     let mut wrapper: Def = Def {
         word: Some(std::str::from_utf8(key).unwrap().to_owned()),
@@ -81,7 +79,7 @@ fn def_merge(
     // Create a wrapper def for all imported def
     let x;
     match existing_val {
-        Some(bytes) => {
+        Some(_bytes) => {
             let p = from_reader::<Def, &[u8]>(existing_val.unwrap());
             match p {
                 Ok(mut d) => {
@@ -137,7 +135,7 @@ fn import_defs<'a>(defs: &'a Vec<Def>, db: &DB, trie: &mut FuzzyTrie<'a, String>
 fn rebuild_trie<'a>(db: &DB, trie: &mut FuzzyTrie<'a, String>) {
     let iter = db.iterator(rocksdb::IteratorMode::Start);
     for x in iter {
-        if let Ok((key, val)) = x {
+        if let Ok((key, _val)) = x {
             let stri = String::from_utf8(key.to_vec()).unwrap();
             trie.insert(stri.as_str()).insert_unique(stri.clone());
         }
@@ -156,7 +154,7 @@ fn open_db(path: &str) -> DB {
 fn load_trie<'a>(path: &str, buf: &'a mut Vec<u8>) -> FuzzyTrie<'a, String> {
     let mut file = match File::open(path) {
         Ok(f) => f,
-        Err(e) => return FuzzyTrie::new(2, true),
+        Err(_e) => return FuzzyTrie::new(2, true),
     };
     file.read_to_end(buf);
 
@@ -198,7 +196,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         Some(Commands::yaml { path }) => {
             // Read yaml, put word defs in rocks, build a trie words -> words
 
-            let mut file = File::open(path).expect("Unable to open file");
+            let file = File::open(path).expect("Unable to open file");
             *yaml_defs = serde_yaml::from_reader(file)?;
 
             trie = load_trie(trie_path, trie_buf);
@@ -245,7 +243,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             println!("{:?}", arr2);
 
-            for d in db.multi_get(arr2.map(|(d, str)| str)) {
+            for d in db.multi_get(arr2.map(|(_d, str)| str)) {
                 if let Ok(Some(by)) = d {
                     // println!("{:?}", bson::from_slice::<Def>(by.as_slice()).unwrap())
                     println!(
@@ -280,7 +278,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             warp::reply::json(&stat {
                 words_rocks: db
                     .property_int_value("rocksdb.estimate-num-keys")
-                    .unwrap().unwrap(),
+                    .unwrap()
+                    .unwrap(),
                 words_trie: trie.into_values().len(),
             })
         });
@@ -364,7 +363,7 @@ fn search(db: &DB, trie: &FuzzyTrie<String>, query: &str) -> Vec<Def> {
 
     let mut res: Vec<Def> = Vec::new();
 
-    for d in db.multi_get(arr2.map(|(d, str)| str)) {
+    for d in db.multi_get(arr2.map(|(_d, str)| str)) {
         if let Ok(Some(by)) = d {
             // println!("{:?}", bson::from_slice::<Def>(by.as_slice()).unwrap())
             res.push(from_reader::<Def, &[u8]>(&by).unwrap());
