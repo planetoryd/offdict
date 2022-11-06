@@ -1,0 +1,21 @@
+[package]
+name = "offdictd"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+ciborium = "0.2.0"
+clap = { version = "4.0.18", features = ["derive"] }
+fuzzy_trie = { path = "../fuzzy_trie" }
+percent-encoding = "2.2.0"
+rocksdb = "0.19.0"
+
+serde = { version = "1.0.147", features = ["derive"] }
+serde_yaml = "0.9.14"
+tokio = { version = "1.21.2", features = ["full"] }
+warp = "0.3.3"
+yaml-rust = "0.4.5"
