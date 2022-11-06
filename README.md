@@ -18,3 +18,12 @@ API:
 Source files that work with it: https://github.com/planetoryd/OpenMdicts
 
 Import them with `offdict yaml -p 'path/OpenMdicts/<name>.yaml'`
+
+### Build
+
+- `cargo build --release`
+
+### Notes
+
+- Borderless UI https://github.com/iced-rs/iced/issues/759
+    - would enable tooltip style
