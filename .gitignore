@@ -2,3 +2,6 @@
 rocks_t
 trie
 trie*
+node_modules
+Cargo.lock
+yarn.lock
