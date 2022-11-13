@@ -5,3 +5,4 @@ trie*
 node_modules
 Cargo.lock
 yarn.lock
+.vscode
