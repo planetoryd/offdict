@@ -6,7 +6,7 @@ Totally offline performant dictionary, built with rocksdb and fuzzy-trie.
 - CLI is provided at minimum
     - [x] API server
     - [x] REPL
-    - [ ] GUI (Native)
+    - [x] GUI (tauri)
 - Performant: Rocksdb for word-defition mapping, and fuzzy-trie is saved to disk
 
 I personally have some Chinese-English dictionary source files. I cleaned up the data into open formats, and this program is specifically for that.
@@ -19,3 +19,9 @@ Source files that work with it: https://github.com/planetoryd/OpenMdicts
 
 Import them with `offdict yaml -p 'path/OpenMdicts/<name>.yaml'`
 
+- [ ] Clipboard watcher
+- [ ] GUI: Import dictionaries from folder/tar.gz
+- [ ] GUI: misc, db stats
+- [ ] Export dictionaries
+- [ ] Decentralized sharing format ? IPLD
+- [ ] Better serialization for rocksdb and fuzzy trie (currently cbor) ? 
