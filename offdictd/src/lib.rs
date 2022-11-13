@@ -1,4 +1,3 @@
-
 pub use serde::{Deserialize, Serialize};
 pub use serde_yaml::{self};
 pub use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -7,8 +6,8 @@ use std::{self};
 
 // use bson::{self, Array, Serializer};
 
-pub use rocksdb::{MergeOperands, Options, DB};
 pub use fuzzy_trie::FuzzyTrie;
+pub use rocksdb::{MergeOperands, Options, DB};
 pub use std::cmp::min;
 
 pub use std::collections::BTreeSet;
@@ -19,6 +18,7 @@ pub use std::io::{Read, Write};
 
 pub use ciborium::{de::from_reader, ser::into_writer};
 
+use serde_ignored;
 impl Def {
     pub fn cli_pretty(&mut self) -> String {
         self._wrapper = false;
@@ -31,29 +31,43 @@ impl Def {
 #[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Def {
     #[serde(skip_serializing_if = "Option::is_none")]
-    definitions: Option<Vec<Def>>,
+    pub definitions: Option<Vec<Def>>,
     // Hierarchical definitions. Definitions from different dictionaries, and in the same dictionary there is multiple definitions
     // Merging the definitions can be considered.
     #[serde(skip_serializing_if = "Option::is_none")]
-    EN: Option<String>,
+    pub groups: Option<Vec<Def>>, // Alias for definitions
     #[serde(skip_serializing_if = "Option::is_none")]
-    pronunciation: Option<pronunciation>,
+    pub etymology: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    title: Option<String>,
+    pub EN: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    r#type: Option<String>,
+    pub pronunciation: Option<pronunciation>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    index: Option<u32>,
+    pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    word: Option<String>,
+    pub info: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    CN: Option<String>,
+    pub r#type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    t1: Option<String>,
+    pub index: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    examples: Option<Vec<example>>,
+    pub word: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub CN: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub t1: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub t2: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub examples: Option<Vec<example>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tip: Option<Vec<tip>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub related: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dictName: Option<String>,
     #[serde(default = "default_as_false", skip_serializing_if = "is_false")]
-    _wrapper: bool,
+    pub _wrapper: bool,
 }
 
 fn is_false(p: &bool) -> bool {
@@ -86,6 +100,21 @@ pub struct example_obj {
     EN: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(untagged)]
+pub enum tip {
+    obj(tip_obj),
+    str(Option<String>),
+    vec_str(Vec<String>),
+}
+
+#[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct tip_obj {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    CN: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    EN: Option<String>,
+}
 
 pub fn search(db: &DB, trie: &FuzzyTrie<String>, query: &str) -> Vec<Def> {
     let mut key: Vec<(u8, &String)> = Vec::new();
@@ -107,6 +136,83 @@ pub fn search(db: &DB, trie: &FuzzyTrie<String>, query: &str) -> Vec<Def> {
     res
 }
 
+// exact word
+pub fn search_single(db: &DB, trie: &FuzzyTrie<String>, word: &str) -> Option<Def> {
+    if let Ok(Some(by)) = db.get(word.as_bytes()) {
+        Some(from_reader::<Def, &[u8]>(&by).unwrap())
+    } else {
+        None
+    }
+}
+
+pub fn import_yaml<'a>(
+    db: &DB,
+    trie: &mut FuzzyTrie<'a, String>,
+    trie_path: &str,
+    trie_buf: &'a mut Vec<u8>,
+    path: &str,
+    yaml_defs: &'a mut Vec<Def>,
+    name: &String,
+) -> Result<(), Box<dyn Error>> {
+    let file = File::open(path).expect("Unable to open file");
+    *yaml_defs = serde_yaml::from_reader(file)?;
+
+    for def in yaml_defs.iter_mut() {
+        (*def).dictName = Some(name.clone());
+    }
+    *trie = load_trie(trie_path, trie_buf);
+    import_defs(yaml_defs, db, trie);
+
+    // match db.get(yaml_defs[0].word.as_ref().unwrap()) {
+    //     Ok(Some(value)) => bson::from_slice::<Def>(value.as_slice()),
+    //     Ok(None) => println!(""),
+    //     Err(e) => println!("operational problem encountered: {}", e),
+    // }
+    // db.delete(yaml_defs[0].word.as_ref().unwrap().as_str())
+    //     .unwrap();
+
+    // let _ = DB::destroy(&Options::default(), path);
+
+    // println!("{}", serde_yaml::to_string(&docs)?);
+
+    save_trie(trie_path, trie);
+    Ok(())
+}
+
+pub fn check_yaml(path: &str, save: bool) {
+    let file = File::open(path).expect("Unable to open file");
+    let d = serde_yaml::Deserializer::from_reader(file);
+    let mut unused = BTreeSet::new();
+
+    let p: Vec<Def> = serde_ignored::deserialize(d, |path| {
+        unused.insert(path.to_string());
+    })
+    .unwrap();
+
+    if save {
+        let consumed = File::create(path.replace(".yaml", ".x.yaml")).unwrap();
+
+        let par = p.into_iter().map(normalize_def).collect::<Vec<Def>>();
+        serde_yaml::to_writer(consumed, &par);
+    }
+    println!("{:?}", unused);
+}
+
+pub fn candidates<'a>(
+    trie: &'a FuzzyTrie<'a, String>,
+    query: &'a str,
+    num_max: usize,
+) -> Vec<&'a String> {
+    let mut key: Vec<(u8, &String)> = Vec::new();
+
+    trie.prefix_fuzzy_search(query, &mut key);
+
+    let mut arr: Vec<(u8, &String)> = key.into_iter().collect();
+    arr.sort_by_key(|x| x.0);
+    let arr2 = arr[..min(num_max, arr.len())].iter();
+
+    arr2.map(|(_d, str)| *str).collect()
+}
 
 // Updates word-def mappings, deduping dup defs
 pub fn import_defs<'a>(defs: &'a Vec<Def>, db: &DB, trie: &mut FuzzyTrie<'a, String>) {
@@ -119,6 +225,7 @@ pub fn import_defs<'a>(defs: &'a Vec<Def>, db: &DB, trie: &mut FuzzyTrie<'a, Str
         trie.insert(def.word.as_ref().unwrap())
             .insert_unique(def.word.clone().unwrap()); // It does work with one key to multi values
     }
+    // db.flush();
 }
 
 pub fn rebuild_trie<'a>(db: &DB, trie: &mut FuzzyTrie<'a, String>) {
@@ -131,6 +238,17 @@ pub fn rebuild_trie<'a>(db: &DB, trie: &mut FuzzyTrie<'a, String>) {
     }
 }
 
+pub fn stat_db(db: &DB) -> u32 {
+    let iter = db.iterator(rocksdb::IteratorMode::Start);
+    let mut n: u32 = 0;
+    for x in iter {
+        if let Ok((key, _val)) = x {
+            n += 1;
+        }
+    }
+    n
+}
+
 pub fn open_db(path: &str) -> DB {
     let mut opts = Options::default();
 
@@ -140,7 +258,7 @@ pub fn open_db(path: &str) -> DB {
     DB::open(&opts, path).unwrap()
 }
 
-pub fn load_trie<'a>(path: &str, buf: &'a mut Vec<u8>) -> FuzzyTrie<'a, String> {
+pub fn load_trie<'a>(path: &str, buf: &mut Vec<u8>) -> FuzzyTrie<'a, String> {
     let mut file = match File::open(path) {
         Ok(f) => f,
         Err(_e) => return FuzzyTrie::new(2, true),
@@ -170,6 +288,24 @@ pub fn save_trie<'a>(path: &str, trie: &FuzzyTrie<'a, String>) -> Result<(), Box
     Ok(())
 }
 
+// fn recursive_path_shorten(mut d: Def) -> Def {
+//     if (d.definitions.is_some() && d.definitions.unwrap().len() == 1) {
+//         d.definitions = Some(d.definitions.unwrap()[0]);
+//     }
+//     recursive_path_shorten(d)
+// }
+
+fn normalize_def(mut d: Def) -> Def {
+    if (d.groups.is_some()) {
+        d.definitions = d.groups;
+        d.groups = None;
+    }
+    if (d._wrapper) {
+        unreachable!("_wrapper=true");
+    }
+    // d = recursive_path_shorten(d);
+    d
+}
 
 // Defs are merged into one single Def
 fn def_merge(
@@ -184,16 +320,23 @@ fn def_merge(
     let mut wrapper: Def = Def {
         word: Some(std::str::from_utf8(key).unwrap().to_owned()),
         definitions: None, // Definitions from different dicts
+        groups: None,
         // Can depend on sub-definition
         EN: None,
         CN: None,
         pronunciation: None,
         examples: None,
+        etymology: None,
+        related: None,
         // -
-        index: None,
+        index: None, // deprecated
+        dictName: None,
+        info: None,
         title: None,
         r#type: None,
         t1: None,
+        t2: None,
+        tip: None,
         _wrapper: true,
     };
     // TODO: How to structure the def. Compare defs in existing value, and ops
@@ -208,10 +351,9 @@ fn def_merge(
                         x = d;
                         set.insert(x);
                     } else {
-                        d.definitions
-                            .unwrap_or_default()
-                            .into_iter()
-                            .map(|k| set.insert(k));
+                        d.definitions.unwrap_or_default().into_iter().for_each(|k| {
+                            set.insert(k);
+                        });
                         d.definitions = None;
                         wrapper = d;
                     }
@@ -226,13 +368,19 @@ fn def_merge(
         match from_reader::<Def, &[u8]>(bytes) {
             Ok(mut parsed) => {
                 parsed.index = None; // remove it
-                set.insert(parsed)
+                if parsed._wrapper {
+                    parsed.definitions.unwrap_or_default().into_iter().for_each(|k| {
+                        set.insert(k);
+                    });
+                } else {
+                    set.insert(parsed);
+                }
             }
             Err(_) => continue,
         };
     }
 
-    wrapper.definitions = Some(set.into_iter().collect());
+    wrapper.definitions = Some(set.into_iter().map(normalize_def).collect());
 
     let mut v: Vec<u8> = Vec::new();
     into_writer(&wrapper, &mut v);
@@ -240,3 +388,10 @@ fn def_merge(
     // Some(flexbuffers::to_vec(&wrapper).unwrap())
 }
 
+// Notes on dictionary format
+// Generally a dictionary is a Vec<Def>
+// A self-sufficient dictionary is a Vec<Def> that tries to cover a topic
+// The Vec<Def> can be serialized to Yaml, but I don't like it.
+// Let's call self-sufficient dictionaries namespaces.
+
+// A dictionary can be an IPLD block containing its description, revision, and all the CIDs that represent a Vec<Def> (we dont care about how the data is chunked)

@@ -7,16 +7,22 @@
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug executable 'offdict'",
+      "name": "Debug executable 'offdictd'",
       "cargo": {
-        "args": ["build", "--bin=offdict", "--package=offdict"],
+        "args": ["build", "--bin=offdictd", "--package=offdictd"],
         "filter": {
-          "name": "offdict",
+          "name": "offdictd",
           "kind": "bin"
         }
       },
-      "args": ["lookup", "议会"],
-      "cwd": "${workspaceFolder}"
+      "args": [
+        "yaml",
+        "-p",
+        "/hdd/OpenMdicts/21世紀電腦英漢漢英雙向辭典.1.yaml",
+        "-n",
+        "21世紀電腦英漢漢英雙向辭典"
+      ],
+      "cwd": "${workspaceFolder}/offdictd"
     },
     {
       "type": "lldb",
