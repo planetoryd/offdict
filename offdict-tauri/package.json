@@ -24,6 +24,7 @@
     "svelte": "^3.49.0",
     "svelte-check": "^2.8.0",
     "svelte-french-toast": "^1.0.3",
+    "svelte-inview": "^3.0.1",
     "svelte-preprocess": "^4.10.7",
     "svelte-tabs": "^1.1.0",
     "tslib": "^2.4.0",

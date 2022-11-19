@@ -24,6 +24,22 @@
       ],
       "cwd": "${workspaceFolder}/offdictd"
     },
+
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug executable 'offdict-tauri'",
+      "preLaunchTask": "ui:dev",
+      "cargo": {
+        "args": ["build", "--bin=offdict-tauri", "--package=offdict-tauri", "--no-default-features"],
+        "filter": {
+          "name": "offdict-tauri",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}/offdict-tauri/src-tauri"
+    },
     {
       "type": "lldb",
       "request": "launch",

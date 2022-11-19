@@ -7,13 +7,19 @@ const app = new App({
 
 document.addEventListener("keydown", (e) => {
   console.log(e.key);
+  if (e.ctrlKey || e.altKey || e.shiftKey) return;
+  if (e.key === "Escape") {
+    app.$set({ dropdown: false });
+    return;
+  }
   if (
     e.key === "Enter" ||
     e.key === "Control" ||
-    ["Escape", "Super"].includes(e.key)
+    ["Super", "PageDown", "PageUp"].includes(e.key)
   )
     return;
   document.querySelector("input.form-input").focus();
 });
+window.viewlist = new Map();
 
 export default app;

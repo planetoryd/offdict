@@ -6,9 +6,9 @@
 
 <div>
   {#if def.definitions}
-    {#each def.definitions as def}
-      <DefUnit {def} />
-    {/each} 
+    {#each def.definitions as d}
+      <DefUnit def={d} />
+    {/each}
   {:else}
     <DefUnit {def} />
   {/if}

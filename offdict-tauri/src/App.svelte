@@ -10,19 +10,29 @@
   import Def from "./lib/Def.svelte";
   import { Tabs, Tab, TabList, TabPanel } from "svelte-tabs";
   import DefUnit from "./lib/DefUnit.svelte";
-  let dropdown = false;
+  import { inview } from "svelte-inview";
+
+  export let dropdown = false;
   let candidates = [
     {
       word: "something",
       id: 0,
     },
   ];
+  let fuzzy_res = [];
   let currentWord = undefined;
+  let currentIndex = -1;
   let inputWord;
   let word_defs; // Def obj for single word
   let def_list = []; // Final list of defs
+  let show_not_found = true;
 
   listen("error", (e) => {});
+  listen("clip", (e) => {
+    inputWord = e.payload;
+    show_not_found = true;
+    onInput();
+  });
 
   // show defs for currentWord
   function show() {
@@ -39,6 +49,74 @@
         console.log(e);
       });
   }
+
+  async function onInput() {
+    // candidates = ;
+    fuzzy_res = await invoke("candidates", { query: inputWord });
+    // console.log(await invoke("defs", { query: currentWord }));
+    candidates = fuzzy_res.map((e, i) => ({ word: e, id: i }));
+    if (fuzzy_res[0]) {
+      currentWord = fuzzy_res[0];
+      currentIndex = 0;
+      show();
+    } else {
+      if (show_not_found)
+        toast.error("not found", { position: "bottom-center", duration: 800 });
+    }
+    // console.log(candidates);
+    // toast.success("Always at the bottom.", {
+    //   position: "bottom-center",
+    // });
+  }
+
+  function navNextDef(goPrev) {
+    // let arr = Array.from(window.viewlist)
+    //   .filter((x) => x[1]?.inView)
+    //   .sort(
+    //     (a, b) =>
+    //       a[0].getBoundingClientRect().y - b[0].getBoundingClientRect().y
+    //   );
+    let lastVisiblePlusOne: number = -1;
+    let arr = Array.from(window.viewlist);
+    arr.sort(
+      (a, b) => a[0].getBoundingClientRect().y - b[0].getBoundingClientRect().y
+    );
+    // Assumption: the Map iterates in the order of DOM elements
+    if (goPrev) arr.reverse();
+    for (let k in arr) {
+      if (!arr[parseInt(k) + 1]) break; // js tf
+      if (arr[k][1].inView && !arr[parseInt(k) + 1][1].inView) {
+        lastVisiblePlusOne = parseInt(k) + 1;
+        break;
+      }
+    }
+    if (lastVisiblePlusOne > -1) {
+      let e = arr[lastVisiblePlusOne][0];
+      // e.scrollIntoView({
+      //   behavior: "smooth",
+      //   block: "start",
+      // });
+      if (!goPrev)
+        window.scrollTo({
+          top: e.getBoundingClientRect().y + window.scrollY - 400,
+          behavior: "smooth",
+        });
+      else
+        window.scrollTo({
+          top: e.getBoundingClientRect().y + window.scrollY,
+          behavior: "smooth",
+        });
+    } else {
+      // should be
+      if (!goPrev)
+        window.scrollTo({
+          top: document.body.scrollHeight,
+          behavior: "smooth",
+        });
+      else window.scrollTo(0, 0);
+    }
+  }
+  window.nav = navNextDef;
 </script>
 
 <main>
@@ -49,30 +127,54 @@
         class="form-input"
         placeholder={currentWord}
         bind:value={inputWord}
-        on:input={async () => {
-          // candidates = ;
-          let res = await invoke("candidates", { query: inputWord });
-          // console.log(await invoke("defs", { query: currentWord }));
-          candidates = res.map((e, i) => ({ word: e, id: i }));
-          // console.log(candidates);
-          // toast.success("Always at the bottom.", {
-          //   position: "bottom-center",
-          // });
+        on:input={(e) => {
+          show_not_found = false;
+          onInput();
         }}
         on:keydown={(e) => {
-          dropdown = true;
+          // dropdown = true;
           if (e.key === "ArrowDown") {
-            document.querySelector(".first .menu-item").firstChild.focus();
+            if (dropdown)
+              document.querySelector(".first .menu-item").firstChild.focus();
+            else if (fuzzy_res[currentIndex + 1]) {
+              currentWord = fuzzy_res[++currentIndex];
+              show();
+            }
+            e.stopPropagation();
+            e.preventDefault();
+          }
+          if (e.key === "ArrowUp") {
+            if (dropdown)
+              document.querySelector(".first .menu-item").firstChild.focus();
+            else if (fuzzy_res[currentIndex - 1]) {
+              currentWord = fuzzy_res[--currentIndex];
+              show();
+            }
             e.stopPropagation();
             e.preventDefault();
           }
           if (e.key === "Enter") {
-            document.querySelector(".first .menu-item").firstChild.click();
+            if (dropdown)
+              document.querySelector(".first .menu-item").firstChild.click();
+            console.log(def_list);
+            e.stopPropagation();
+            e.preventDefault();
+          }
+          if (e.key === "ArrowRight") {
+            navNextDef();
+            e.stopPropagation();
+            e.preventDefault();
+          }
+          if (e.key === "ArrowLeft") {
+            navNextDef(true);
             e.stopPropagation();
             e.preventDefault();
           }
         }}
-        on:focus={() => (dropdown = true)}
+        on:focus={() => {
+          // dropdown = true;
+          //
+        }}
         on:click={(e) => {
           e.stopPropagation();
           e.preventDefault();
@@ -140,7 +242,17 @@
     }}
   >
     {#each def_list as def}
-      <div class="card">
+      <div
+        class="card {def.in ? 'glow' : ''}"
+        bind:this={def.card}
+        use:inview={{}}
+        on:change={(event) => {
+          const { inView, entry, scrollDirection, observer, node } =
+            event.detail;
+          def.in = inView;
+          console.log(def);
+        }}
+      >
         <!-- <div class="card-image">
         <img src="public/svelte.svg">
       </div> -->
@@ -149,7 +261,7 @@
             {def?.word}
           </div>
           <div class="card-subtitle text-gray">
-            {def?.pronunciation?.join(" / ") || ""}
+            {(def?.pronunciation?.join && def?.pronunciation.join(" / ")) || ""}
           </div>
         </div>
         <div class="card-body">

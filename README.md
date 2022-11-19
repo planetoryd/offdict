@@ -19,11 +19,19 @@ Source files that work with it: https://github.com/planetoryd/OpenMdicts
 
 Import them with `offdict yaml -p 'path/OpenMdicts/<name>.yaml'`
 
-- [ ] GUI: Clipboard watcher
-- [ ] GUI: prevent duplicate process; system tray
+- [x] GUI: Clipboard watcher
 - [ ] GUI: Import dictionaries from folder/tar.gz
-- [ ] GUI: misc, db stats
 - [ ] Export dictionaries
 - [ ] Decentralized sharing format ? IPLD ?
     - a protocol on revising dictionaries ?
 - [ ] Better serialization for rocksdb and fuzzy trie (currently cbor) ? 
+
+```sh
+apt install libxcb-shape0-dev libxcb-xfixes0-dev # required for building clipboard-master
+```
+
+## Usage
+
+- Input anywhere to start live search
+- Press ⬆️ or ⬇️ for different words
+- Press ⬅️ or ➡️ for scrolling

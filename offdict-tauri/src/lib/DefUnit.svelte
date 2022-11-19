@@ -1,8 +1,26 @@
 <script>
   export let def;
+  let ele;
+  import { onMount, onDestroy } from "svelte";
+  import { inview } from "svelte-inview";
+  onMount(() => {
+    window.viewlist.set(ele, { inView: false, def });
+  });
+  onDestroy(() => {
+    window.viewlist.delete(ele);
+  });
 </script>
 
-<div class="explain">
+<div
+  class="explain"
+  use:inview={{}}
+  bind:this={ele}
+  on:change={(event) => {
+    const { inView, entry, scrollDirection, observer, node } = event.detail;
+    window.viewlist.set(node, { inView, def });
+    // else window.viewlist.delete(node)
+  }}
+>
   {#if def.CN}
     <div class="CN">{def.CN}</div>
   {/if}
@@ -11,17 +29,19 @@
   {/if}
   {#if def.examples}
     {#each def.examples as ex}
-      <div class="example">
-        {#if ex.CN}
-          <div>{ex.CN}</div>
-        {/if}
-        {#if ex.EN}
-          <div>{ex.EN}</div>
-        {/if}
-        {#if typeof ex === "string"}
-          <div>{ex}</div>
-        {/if}
-      </div>
+      {#if ex}
+        <div class="example">
+          {#if ex.CN}
+            <div>{ex.CN}</div>
+          {/if}
+          {#if ex.EN}
+            <div>{ex.EN}</div>
+          {/if}
+          {#if typeof ex === "string"}
+            <div>{ex}</div>
+          {/if}
+        </div>
+      {/if}
     {/each}
   {/if}
   {#if def.type}

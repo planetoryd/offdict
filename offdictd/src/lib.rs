@@ -2,7 +2,7 @@ pub use serde::{Deserialize, Serialize};
 pub use serde_yaml::{self};
 pub use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use std::{self};
+use std::{self, vec};
 
 // use bson::{self, Array, Serializer};
 
@@ -17,6 +17,9 @@ pub use std::fs::File;
 pub use std::io::{Read, Write};
 
 pub use ciborium::{de::from_reader, ser::into_writer};
+
+use lazy_static;
+use regex::Regex;
 
 use serde_ignored;
 impl Def {
@@ -198,6 +201,27 @@ pub fn check_yaml(path: &str, save: bool) {
     println!("{:?}", unused);
 }
 
+pub fn contain_non_english(text: &str) -> bool {
+    lazy_static::lazy_static! {
+        static ref RE: Regex = Regex::new(r"\p{Han}").unwrap();
+    }
+    RE.is_match(text)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::contain_non_english;
+    #[test]
+    fn check_chinese() {
+        assert!(contain_non_english("以"));
+        assert!(contain_non_english("'' 存在"));
+        assert!(contain_non_english("'' 存在 be"));
+        assert!(!contain_non_english("be"));
+        assert!(!contain_non_english("' be"));
+        assert!(!contain_non_english("be ᵐ"));
+    }
+}
+
 pub fn candidates<'a>(
     trie: &'a FuzzyTrie<'a, String>,
     query: &'a str,
@@ -208,10 +232,25 @@ pub fn candidates<'a>(
     trie.prefix_fuzzy_search(query, &mut key);
 
     let mut arr: Vec<(u8, &String)> = key.into_iter().collect();
-    arr.sort_by_key(|x| x.0);
-    let arr2 = arr[..min(num_max, arr.len())].iter();
+    arr.sort_by_key(|x| x.0); // x.0 is distance, from 0 to 2
 
-    arr2.map(|(_d, str)| *str).collect()
+    let arr2 = arr[..min(num_max, arr.len())].iter();
+    println!("{:?}", arr.get(0));
+
+    // Chinese words get a small distance that is 1.
+    // Return [] if a Chinese word is matched to English
+
+    if arr.len() > 0 {
+        if contain_non_english(query) != contain_non_english(arr[0].1) {
+            vec![]
+        } else if arr[0].0 < 2 {
+            arr2.map(|(_d, str)| *str).collect()
+        } else {
+            vec![]
+        }
+    } else {
+        vec![]
+    }
 }
 
 // Updates word-def mappings, deduping dup defs
@@ -300,7 +339,7 @@ fn normalize_def(mut d: Def) -> Def {
         d.definitions = d.groups;
         d.groups = None;
     }
-    if (d._wrapper) {
+    if d._wrapper {
         unreachable!("_wrapper=true");
     }
     // d = recursive_path_shorten(d);
@@ -369,9 +408,13 @@ fn def_merge(
             Ok(mut parsed) => {
                 parsed.index = None; // remove it
                 if parsed._wrapper {
-                    parsed.definitions.unwrap_or_default().into_iter().for_each(|k| {
-                        set.insert(k);
-                    });
+                    parsed
+                        .definitions
+                        .unwrap_or_default()
+                        .into_iter()
+                        .for_each(|k| {
+                            set.insert(k);
+                        });
                 } else {
                     set.insert(parsed);
                 }
