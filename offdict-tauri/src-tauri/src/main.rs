@@ -7,24 +7,21 @@ use offdictd::{self, *};
 use rust_stemmers::{Algorithm, Stemmer};
 use std::{
     borrow::Borrow,
-    env,
+    env, fs,
     path::PathBuf,
     sync::Arc,
     sync::{Mutex, RwLock},
     thread,
 };
 use tauri::{
-    self, window, App, ClipboardManager, GlobalShortcutManager, Manager, Window, WindowEvent,
+    self, api::dialog, window, App, ClipboardManager, GlobalShortcutManager, Manager, Window,
+    WindowEvent,
 };
 
 use clipboard_master::{CallbackResult, ClipboardHandler, Master};
 
-use tauri_plugin_positioner::{WindowExt, Position};
 use std::io;
-
-// struct Handler<'a> {
-//     app: &'a mut App,
-// }
+use tauri_plugin_positioner::{Position, WindowExt};
 
 struct Handler<T: ClipboardManager> {
     app: Window,
@@ -45,7 +42,7 @@ impl<T: ClipboardManager> ClipboardHandler for Handler<T> {
         }
         self.app.set_always_on_top(true).unwrap();
         // doesnt really work on kde, only sets it glowy
-        // self.app.set_focus().expect("cannot focus window"); 
+        // self.app.set_focus().expect("cannot focus window");
 
         CallbackResult::Next
     }
@@ -67,12 +64,14 @@ struct OffdictConfig {
 }
 
 pub struct InnerState<'a> {
-    pub db: Option<DB>,
-    pub trie: Option<FuzzyTrie<'a, String>>,
-    pub trie_buf: Vec<u8>,
+    pub db: RwLock<Option<DB>>,
+    pub trie: RwLock<Option<FuzzyTrie<'a, String>>>,
+    pub trie_buf: RwLock<Vec<u8>>,
+    pub yaml_defs: RwLock<Vec<Def>>,
+    // pub importing: bool,
 }
 
-pub struct OffdictState<'a>(pub RwLock<InnerState<'a>>);
+pub struct OffdictState<'a>(pub Arc<InnerState<'a>>);
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 #[tauri::command]
@@ -81,14 +80,14 @@ fn candidates<'a>(
     query: &'a str,
 ) -> Result<Vec<String>, ()> {
     // offdictd::candidates(trie, query, num_max)
-    let state_guard = state.0.read().unwrap();
+    let state_guard = state.0.trie.read().unwrap();
     // Change field of state struct
     // Replace state struct; here you need to dereference the guard to get the pointer to the inner value (I think)
     // *state_guard = InnerState {
     //     db: None,
     //     trie: None,
     // };
-    let strs = offdictd::candidates(state_guard.trie.as_ref().unwrap(), query, 5);
+    let strs = offdictd::candidates(state_guard.as_ref().unwrap(), query, 5);
     println!("{:?}", strs);
 
     Ok(strs.into_iter().map(|x| x.clone()).collect()) // lets clone it bc idk how to solve it atm
@@ -96,19 +95,79 @@ fn candidates<'a>(
 
 #[tauri::command]
 fn defs<'a>(state: tauri::State<'a, OffdictState>, query: &'a str) -> Result<Def, &'static str> {
-    let state_guard = state.0.read().unwrap();
-
-    let d = offdictd::search_single(
-        state_guard.db.as_ref().unwrap(),
-        state_guard.trie.as_ref().unwrap(),
-        query,
-    );
+    // let state_guard = state.0.read().unwrap();
+    let db_ = state.0.db.read();
+    let db = db_.as_ref().unwrap().as_ref().unwrap();
+    let trie_ = state.0.trie.read();
+    let trie = trie_.as_ref().unwrap().as_ref().unwrap();
+    let d = offdictd::search_single(db, trie, query);
 
     match d {
         Some(de) => Ok(de),
         None => Err("not found"),
     }
 }
+
+#[tauri::command]
+fn import<'a>(state: tauri::State<'a, OffdictState>) {
+    println!("import");
+    // state.0.importing = true;
+    let v = state.0.clone();
+
+    dialog::FileDialogBuilder::default()
+        .add_filter("tar.gz/yaml", &["tar.gz", "yaml"])
+        .pick_folder(move |folder| match folder {
+            Some(folder) => {
+                thread::spawn(move || {
+                    let mut db_ = v.db.read();
+                    let db = db_.as_ref().unwrap().as_ref().unwrap();
+                    let mut trie_ = v.trie.write();
+                    let trie = trie_.as_mut().unwrap().as_mut().unwrap();
+                    let mut trie_buf_ = v.trie_buf.write();
+                    let trie_buf = <Vec<u8> as AsMut<Vec<u8>>>::as_mut(trie_buf_.as_mut().unwrap());
+                    let mut yaml_defs_ = v.yaml_defs.write();
+                    let yaml_defs: &mut Vec<Def> = yaml_defs_.as_mut().unwrap().as_mut();
+                    println!("folder picked, {}", folder.display());
+                    let paths = fs::read_dir(folder).unwrap();
+                    for path in paths {
+                        let p: String = path.as_ref().unwrap().path().to_str().unwrap().to_string();
+                        if p.ends_with(".yaml") {
+                            println!("importing yaml, {}", &p);
+                            let pre = path.unwrap().file_name();
+                            let name = pre.to_str().unwrap().split_once(".").unwrap();
+                            let pa;
+                            // let yaml_defs;
+                            unsafe {
+                                w.as_ref().unwrap().emit("importing", &p);
+                                pa = &trie_pa;
+                            }
+
+                            import_yaml_opened(
+                                db,
+                                trie,
+                                trie_buf,
+                                yaml_defs,
+                                &p,
+                                pa,
+                                &name.0.to_string(),
+                            )
+                            .unwrap();
+
+                            unsafe {
+                                w.as_ref().unwrap().emit("imported", &p);
+                            }
+                        } else if p.ends_with(".yaml.gz") {
+                            println!("yaml.gz , {}", p)
+                        }
+                    }
+                });
+            }
+            None => (),
+        });
+}
+
+static mut w: Option<Window> = None;
+static mut trie_pa: String = String::new();
 
 fn main() {
     let x = tauri::Builder::default()
@@ -128,9 +187,16 @@ fn main() {
                 let mut window = app.get_window("main").unwrap();
                 let w_on_ev = app.get_window("main").unwrap();
                 let w_on_shortcut = app.get_window("main").unwrap();
+
+                unsafe {
+                    w = Some(app.get_window("main").unwrap());
+                }
+
                 window.set_always_on_top(true);
                 // window.set_focus().unwrap();
-                window.move_window(Position::BottomRight).expect("cannot move window");
+                window
+                    .move_window(Position::BottomRight)
+                    .expect("cannot move window");
 
                 let gtk_w = window.gtk_window().unwrap();
 
@@ -155,19 +221,23 @@ fn main() {
                     });
 
                 let state: tauri::State<OffdictState> = app.state();
-                let mut state_guard = state.0.write().unwrap();
+
+                let v = state.0.clone();
+                let mut db = v.db.write().unwrap();
+                let mut trie = v.trie.write().unwrap();
+                let mut trie_buf = v.trie_buf.write().unwrap();
 
                 let mut db_path = PathBuf::from(conf.data_path.clone());
                 db_path.push("rocks_t");
                 let mut trie_path = PathBuf::from(conf.data_path.clone());
                 trie_path.push("trie");
+                unsafe {
+                    trie_pa = trie_path.to_str().unwrap().to_string();
+                }
 
-                state_guard.db = Some(open_db(db_path.to_str().unwrap()));
+                *db = Some(open_db(db_path.to_str().unwrap()));
 
-                state_guard.trie = Some(load_trie(
-                    trie_path.to_str().unwrap(),
-                    &mut state_guard.trie_buf,
-                ));
+                *trie = Some(load_trie(trie_path.to_str().unwrap(), &mut trie_buf));
             } else {
                 println!("Config not found in working directory");
                 panic!();
@@ -185,12 +255,13 @@ fn main() {
             });
             Ok(())
         })
-        .manage(OffdictState(RwLock::new(InnerState {
-            db: None,
-            trie: None,
-            trie_buf: Vec::new(),
+        .manage(OffdictState(Arc::new(InnerState {
+            db: RwLock::new(None),
+            trie: RwLock::new(None),
+            trie_buf: RwLock::new(Vec::new()),
+            yaml_defs: RwLock::new(vec![]),
         })))
-        .invoke_handler(tauri::generate_handler![candidates, defs]);
+        .invoke_handler(tauri::generate_handler![candidates, defs, import]);
     x.run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

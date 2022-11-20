@@ -34,6 +34,21 @@
     onInput();
   });
 
+  listen("importing", (e) => {
+    toast.loading("importing " + e.payload, {
+      position: "bottom-center",
+      id: e.payload as string,
+    });
+  });
+
+  listen("imported", (e) => {
+    toast.dismiss(e.payload as string);
+    toast.success("imported " + e.payload, {
+      position: "bottom-center",
+      duration: 800,
+    });
+  });
+
   // show defs for currentWord
   function show() {
     invoke("defs", { query: currentWord })
@@ -180,7 +195,10 @@
           e.preventDefault();
         }}
       />
-      <button class="btn btn-secondary input-group-btn">settings</button>
+      <button
+        class="btn btn-secondary input-group-btn"
+        on:click={(e) => invoke("import")}>import</button
+      >
     </div>
     {#if dropdown}
       <!-- <ul class="menu" transition:slide={{ duration: 5, easing: sineInOut }}> -->

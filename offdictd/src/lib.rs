@@ -21,6 +21,8 @@ pub use ciborium::{de::from_reader, ser::into_writer};
 use lazy_static;
 use regex::Regex;
 
+use timed::timed;
+
 use serde_ignored;
 impl Def {
     pub fn cli_pretty(&mut self) -> String {
@@ -139,6 +141,7 @@ pub fn search(db: &DB, trie: &FuzzyTrie<String>, query: &str) -> Vec<Def> {
     res
 }
 
+#[timed]
 // exact word
 pub fn search_single(db: &DB, trie: &FuzzyTrie<String>, word: &str) -> Option<Def> {
     if let Ok(Some(by)) = db.get(word.as_bytes()) {
@@ -146,6 +149,28 @@ pub fn search_single(db: &DB, trie: &FuzzyTrie<String>, word: &str) -> Option<De
     } else {
         None
     }
+}
+
+#[timed]
+pub fn import_yaml_opened<'a>(
+    db: &DB,
+    trie: &mut FuzzyTrie<'a, String>,
+    trie_buf: &mut Vec<u8>,
+    yaml_defs: &mut Vec<Def>,
+    path: &str,
+    trie_path: &str,
+    name: &String,
+) -> Result<(), Box<dyn Error>> {
+    let file = File::open(path).expect("Unable to open file");
+    *yaml_defs = serde_yaml::from_reader(file)?;
+    for def in yaml_defs.iter_mut() {
+        (*def).dictName = Some(name.clone());
+    }
+    import_defs(yaml_defs, db, trie);
+
+    save_trie(trie_path, trie).unwrap();
+
+    Ok(())
 }
 
 pub fn import_yaml<'a>(
@@ -253,18 +278,21 @@ pub fn candidates<'a>(
     }
 }
 
+#[timed]
 // Updates word-def mappings, deduping dup defs
-pub fn import_defs<'a>(defs: &'a Vec<Def>, db: &DB, trie: &mut FuzzyTrie<'a, String>) {
+pub fn import_defs<'a>(defs: &Vec<Def>, db: &DB, trie: &mut FuzzyTrie<'a, String>) {
     // let mut trie: FuzzyTrie<&'a str> = FuzzyTrie::new(2, false);
     for def in defs {
         let mut v: Vec<u8> = Vec::new();
         into_writer(&def, &mut v);
         db.merge(def.word.as_ref().unwrap().as_str(), v);
-
+    }
+    println!("- trie");
+    for def in defs {
         trie.insert(def.word.as_ref().unwrap())
             .insert_unique(def.word.clone().unwrap()); // It does work with one key to multi values
     }
-    // db.flush();
+    db.flush();
 }
 
 pub fn rebuild_trie<'a>(db: &DB, trie: &mut FuzzyTrie<'a, String>) {
@@ -346,6 +374,8 @@ fn normalize_def(mut d: Def) -> Def {
     d
 }
 
+
+#[timed]
 // Defs are merged into one single Def
 fn def_merge(
     key: &[u8], // The word

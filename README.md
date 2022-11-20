@@ -20,7 +20,7 @@ Source files that work with it: https://github.com/planetoryd/OpenMdicts
 Import them with `offdict yaml -p 'path/OpenMdicts/<name>.yaml'`
 
 - [x] GUI: Clipboard watcher
-- [ ] GUI: Import dictionaries from folder/tar.gz
+- [x] GUI: Import dictionaries from a folder of yaml
 - [ ] Export dictionaries
 - [ ] Decentralized sharing format ? IPLD ?
     - a protocol on revising dictionaries ?
@@ -35,3 +35,9 @@ apt install libxcb-shape0-dev libxcb-xfixes0-dev # required for building clipboa
 - Input anywhere to start live search
 - Press ⬆️ or ⬇️ for different words
 - Press ⬅️ or ➡️ for scrolling
+- It loads `config.json5` in the working directory
+    - In the directory as specified by `data_path`, file `trie` and folder `rocks_t` should exist or will be created. 
+- To import dictionaries
+    1. Copy existing `trie` and `rocks_t` to the working directory
+    2. Use GUI
+    3. Use CLI
