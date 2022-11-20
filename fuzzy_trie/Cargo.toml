@@ -12,5 +12,7 @@ keywords = ["fuzzy", "trie", "levenshtein", "dictionary", "dict"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+bimap = { version = "0.6.2", features = ["serde"] }
 levenshtein_automata = { path = "../levenshtein_automata" }
 serde = { version = "1.0.147", features = ["derive"] }
+timed = "0.1.5"

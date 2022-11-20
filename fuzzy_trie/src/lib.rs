@@ -11,15 +11,15 @@ mod inserter;
 #[cfg(test)]
 mod tests;
 
+use bimap::BiBTreeMap;
 use branch::Node;
 pub use collector::Collector;
 pub use config::*;
 pub use inserter::Inserter;
 use levenshtein_automata::LevenshteinAutomatonBuilder;
-use std::marker;
-use std::slice::Iter;
-
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use std::slice::Iter;
+use std::{collections::BTreeSet, marker};
 
 /// FuzzyTrie is a trie with a LevensteinAutomata to make fuzzy searches
 ///
@@ -56,15 +56,15 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 ///
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct FuzzyTrie<'b, T: 'b> {
-    values: Vec<T>,
+pub struct FuzzyTrie<'b, T: 'b + Ord> {
+    pub values: BiBTreeMap<usize, T>,
     root: Node,
     dfa_builders: Vec<(LevenshteinAutomatonBuilder, usize)>,
     default_dfa_builder: LevenshteinAutomatonBuilder,
     _marker: marker::PhantomData<&'b T>,
 }
 
-impl<'b, T> FuzzyTrie<'b, T> {
+impl<'b, T: Ord> FuzzyTrie<'b, T> {
     /// Creates new fuzzy trie with
     /// given distance and dameru params
     #[inline]
@@ -94,7 +94,7 @@ impl<'b, T> FuzzyTrie<'b, T> {
             })
             .collect();
         dfa_builders.sort_by_key(|(_, l)| *l);
-        let values: Vec<T> = Vec::new();
+        let values: BiBTreeMap<usize, T> = BiBTreeMap::new();
         let root = Node::new_branch('\0');
         Self {
             values,
@@ -125,7 +125,7 @@ impl<'b, T> FuzzyTrie<'b, T> {
     /// Makes fuzzy search with given key and puts result to out collector
     /// See `Collector` for additional information
     #[inline]
-    pub fn fuzzy_search<'a, C: Collector<'a, T>>(&'a self, key: &'a str, out: &mut C) {
+    pub fn fuzzy_search<'a, C: Collector>(&'a self, key: &'a str, out: &mut C) {
         let branches = match &self.root {
             Node::Branch(_, branches) => branches,
             _ => unreachable!(),
@@ -139,7 +139,8 @@ impl<'b, T> FuzzyTrie<'b, T> {
     /// Makes fuzzy search on prefix with given key and puts result to out collector
     /// See `Collector` for additional information
     #[inline]
-    pub fn prefix_fuzzy_search<'a, C: Collector<'a, T>>(&'a self, key: &'a str, out: &mut C) {
+    #[timed::timed]
+    pub fn prefix_fuzzy_search<'a, C: Collector>(&'a self, key: &'a str, out: &mut C) {
         let branches = match &self.root {
             Node::Branch(_, branches) => branches,
             _ => unreachable!(),
@@ -148,21 +149,10 @@ impl<'b, T> FuzzyTrie<'b, T> {
             .choose_dfa_builder(key.chars().count())
             .build_prefix_dfa(key);
         for br in branches {
-            br.fuzzy_search(&self.values, &dfa, dfa.initial_state(), out);
+            if br.fuzzy_search(&self.values, &dfa, dfa.initial_state(), out) {
+                return;
+            }
         }
-    }
-
-    /// Iterator over values
-    #[inline]
-    pub fn iter(&self) -> Iter<'_, T> {
-        self.values.iter()
-    }
-
-    /// Destructs self into inner vec of values
-    #[inline]
-    #[allow(clippy::missing_const_for_fn)]
-    pub fn into_values(&self) -> &Vec<T> {
-        &self.values
     }
 
     /// Len of inner values vector

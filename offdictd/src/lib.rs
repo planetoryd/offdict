@@ -1,3 +1,4 @@
+use fuzzy_trie::Collector;
 pub use serde::{Deserialize, Serialize};
 pub use serde_yaml::{self};
 pub use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -122,16 +123,16 @@ pub struct tip_obj {
 }
 
 pub fn search(db: &DB, trie: &FuzzyTrie<String>, query: &str) -> Vec<Def> {
-    let mut key: Vec<(u8, &String)> = Vec::new();
+    let mut key: Vec<(u8, usize)> = Vec::new();
 
     trie.prefix_fuzzy_search(query, &mut key); // Values of, keys that are close, are returned
-    let mut arr: Vec<(u8, &String)> = key.into_iter().collect();
+    let mut arr: Vec<(u8, usize)> = key.into_iter().collect();
     arr.sort_by_key(|x| x.0);
     let arr2 = arr[..min(3, arr.len())].iter();
 
     let mut res: Vec<Def> = Vec::new();
 
-    for d in db.multi_get(arr2.map(|(_d, str)| str)) {
+    for d in db.multi_get(arr2.map(|(_d, str)| trie.values.get_by_left(&str).unwrap())) {
         if let Ok(Some(by)) = d {
             // println!("{:?}", bson::from_slice::<Def>(by.as_slice()).unwrap())
             res.push(from_reader::<Def, &[u8]>(&by).unwrap());
@@ -203,7 +204,7 @@ pub fn import_yaml<'a>(
 
     // println!("{}", serde_yaml::to_string(&docs)?);
 
-    save_trie(trie_path, trie);
+    save_trie(trie_path, trie).unwrap();
     Ok(())
 }
 
@@ -221,7 +222,7 @@ pub fn check_yaml(path: &str, save: bool) {
         let consumed = File::create(path.replace(".yaml", ".x.yaml")).unwrap();
 
         let par = p.into_iter().map(normalize_def).collect::<Vec<Def>>();
-        serde_yaml::to_writer(consumed, &par);
+        serde_yaml::to_writer(consumed, &par).unwrap();
     }
     println!("{:?}", unused);
 }
@@ -247,16 +248,17 @@ mod tests {
     }
 }
 
-pub fn candidates<'a>(
+pub fn get_candidates<'a>(
     trie: &'a FuzzyTrie<'a, String>,
     query: &'a str,
     num_max: usize,
 ) -> Vec<&'a String> {
-    let mut key: Vec<(u8, &String)> = Vec::new();
+    let mut key: Vec<(u8, usize)> = Vec::new();
 
-    trie.prefix_fuzzy_search(query, &mut key);
+    trie.prefix_fuzzy_search(query, &mut key); // optimize
+                                               // println!("{:?}", key);
 
-    let mut arr: Vec<(u8, &String)> = key.into_iter().collect();
+    let mut arr: Vec<(u8, usize)> = key.into_iter().collect();
     arr.sort_by_key(|x| x.0); // x.0 is distance, from 0 to 2
 
     let arr2 = arr[..min(num_max, arr.len())].iter();
@@ -266,10 +268,14 @@ pub fn candidates<'a>(
     // Return [] if a Chinese word is matched to English
 
     if arr.len() > 0 {
-        if contain_non_english(query) != contain_non_english(arr[0].1) {
+        if contain_non_english(query)
+            != contain_non_english(trie.values.get_by_left(&arr[0].1).unwrap())
+        {
             vec![]
         } else if arr[0].0 < 2 {
-            arr2.map(|(_d, str)| *str).collect()
+            arr2.into_iter()
+                .map(|(d, i)| trie.values.get_by_left(i).unwrap())
+                .collect::<Vec<&String>>()
         } else {
             vec![]
         }
@@ -285,14 +291,14 @@ pub fn import_defs<'a>(defs: &Vec<Def>, db: &DB, trie: &mut FuzzyTrie<'a, String
     for def in defs {
         let mut v: Vec<u8> = Vec::new();
         into_writer(&def, &mut v);
-        db.merge(def.word.as_ref().unwrap().as_str(), v);
+        db.merge(def.word.as_ref().unwrap().as_str(), v).unwrap();
     }
     println!("- trie");
     for def in defs {
         trie.insert(def.word.as_ref().unwrap())
-            .insert_unique(def.word.clone().unwrap()); // It does work with one key to multi values
+            .insert(def.word.clone().unwrap()); // It does work with one key to multi values
     }
-    db.flush();
+    db.flush().unwrap();
 }
 
 pub fn rebuild_trie<'a>(db: &DB, trie: &mut FuzzyTrie<'a, String>) {
@@ -300,7 +306,7 @@ pub fn rebuild_trie<'a>(db: &DB, trie: &mut FuzzyTrie<'a, String>) {
     for x in iter {
         if let Ok((key, _val)) = x {
             let stri = String::from_utf8(key.to_vec()).unwrap();
-            trie.insert(stri.as_str()).insert_unique(stri.clone());
+            trie.insert(stri.as_str()).insert(stri.clone());
         }
     }
 }
@@ -330,7 +336,7 @@ pub fn load_trie<'a>(path: &str, buf: &mut Vec<u8>) -> FuzzyTrie<'a, String> {
         Ok(f) => f,
         Err(_e) => return FuzzyTrie::new(2, true),
     };
-    file.read_to_end(buf);
+    file.read_to_end(buf).unwrap();
 
     // Flexbuffers break the fuzzy trie. Dont use it
     // let trie: FuzzyTrie<'a, String> = flexbuffers::from_slice(buf).unwrap();
@@ -347,11 +353,11 @@ pub fn save_trie<'a>(path: &str, trie: &FuzzyTrie<'a, String>) -> Result<(), Box
     // let doc = y.as_bytes();
 
     let mut doc: Vec<u8> = Vec::new();
-    into_writer(trie, &mut doc);
+    into_writer(trie, &mut doc).unwrap();
 
     let mut file = File::create(path).expect("Unable to open file");
 
-    file.write_all(&doc);
+    file.write_all(&doc).unwrap();
     Ok(())
 }
 
@@ -363,7 +369,7 @@ pub fn save_trie<'a>(path: &str, trie: &FuzzyTrie<'a, String>) -> Result<(), Box
 // }
 
 fn normalize_def(mut d: Def) -> Def {
-    if (d.groups.is_some()) {
+    if d.groups.is_some() {
         d.definitions = d.groups;
         d.groups = None;
     }
@@ -373,7 +379,6 @@ fn normalize_def(mut d: Def) -> Def {
     // d = recursive_path_shorten(d);
     d
 }
-
 
 #[timed]
 // Defs are merged into one single Def
