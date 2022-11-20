@@ -1,15 +1,20 @@
-use std::path::PathBuf;
+use std::{
+    path::PathBuf,
+    sync::{Arc, RwLock},
+};
 
-use ciborium::de::from_reader;
+// use ciborium::de::from_reader;
 
 use clap::{Parser, Subcommand};
 
 use percent_encoding;
-use tokio;
+use tokio::{self, sync::Mutex};
 use warp::Filter;
 
 use config::{Config, File, FileFormat};
 use offdictd::*;
+
+use fuzzy_rocks::Table;
 
 #[derive(Debug, Deserialize)]
 struct OffdictConfig {
@@ -24,10 +29,11 @@ struct Cli {
     command: Option<Commands>,
 }
 
+#[allow(non_camel_case_types)]
 #[derive(Debug, Subcommand)]
 enum Commands {
     #[command(
-        about = "Import definitions from an yaml file to rocksdb and fuzzytrie",
+        about = "Import definitions from an yaml file to rocksdb",
         arg_required_else_help = false
     )]
     yaml {
@@ -42,8 +48,6 @@ enum Commands {
     },
     #[command(about = "Stats")]
     stat {},
-    #[command(about = "Rebuild fuzzytrie from rocksdb")]
-    trie {},
     #[command(about = "Fuzzy query (prefix)")]
     lookup { query: String },
     // #[command(about = "Convert an yaml file to cbor")]
@@ -71,17 +75,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut _db_path = PathBuf::from(conf.data_path.clone());
     _db_path.push("rocks_t");
     let db_path = _db_path.to_str().unwrap();
-    let mut _trie_path = PathBuf::from(conf.data_path.clone());
-    _trie_path.push("./trie");
-    let trie_path = _trie_path.to_str().unwrap();
 
-    let db = open_db(&db_path);
-    let trie_buf: &'static mut Vec<u8> = Box::leak(Box::new(Vec::new()));
-    let mut trie = FuzzyTrie::new(2, true);
+    let mut db = Arc::new(RwLock::new(open_db(&db_path)));
 
     let yaml_defs: &'static mut Vec<Def> = Box::leak(Box::new(Vec::new()));
 
     println!("config: {:?}", &conf);
+
+    let db_a = db.clone();
+    let mut db_w = db.write().unwrap();
     match args.command {
         Some(Commands::yaml {
             path,
@@ -89,7 +91,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             check,
             save,
         }) => {
-            // Read yaml, put word defs in rocks, build a trie words -> words
             if check {
                 check_yaml(&path, save);
                 return Ok(());
@@ -109,105 +110,47 @@ fn main() -> Result<(), Box<dyn Error>> {
                 name1 = name.unwrap()
             }
 
-            let r = import_yaml(
-                &db, &mut trie, trie_path, trie_buf, &path, yaml_defs, &name1,
-            );
+            let r = import_yaml(&mut db_w, yaml_defs, &path, &name1);
+
             match r {
                 Ok(()) => println!("imported"),
                 Err(e) => println!("{:?}", e),
             }
         }
-        // Some(Commands::cbor { path, name }) => {
-        //     let file = File::open(&path).expect("Unable to open file");
-        //     *yaml_defs = serde_yaml::from_reader(file)?;
-        //     // *yaml_defs = ciborium::de::from_reader(file)?;
-
-        //     for def in yaml_defs.iter_mut() {
-        //         (*def).dictName = Some(name.clone());
-        //     }
-
-        //     let wf = File::create(path.replace(".yaml", ".cbor"))?;
-        //     ciborium::ser::into_writer(yaml_defs, wf)?;
-
-        //     println!("written to cbor")
-        //     // trie = load_trie(trie_path, trie_buf);
-        //     // import_defs(cbor_defs, &db, &mut trie);
-
-        // }
-        // No we dont need cbor. just gzip
         Some(Commands::stat {}) => {
-            trie = load_trie(trie_path, trie_buf);
-
-            // if let Ok(Some(r)) = db.property_int_value("rocksdb.estimate-num-keys") {
-            //     println!("Words: {}", r);
-            // }
-            // That's not accurate.
-
-            println!("Words in database: {}", stat_db(&db));
-            println!("Words in trie: {}", trie.into_values().len());
-        }
-        Some(Commands::trie {}) => {
-            trie = FuzzyTrie::new(2, true);
-            rebuild_trie(&db, &mut trie);
-            save_trie(&trie_path, &trie);
-            println!("trie rebuilt");
+            println!("Words in database: {}", stat_db(&db_w));
         }
         Some(Commands::lookup { query }) => {
-            trie = load_trie(trie_path, trie_buf);
-
-            let mut key: Vec<(u8, &String)> = Vec::new();
-
-            trie.prefix_fuzzy_search(&query, &mut key); // Values of, keys that are close, are returned
-            let mut arr: Vec<(u8, &String)> = key.into_iter().collect();
-            arr.sort_by_key(|x| x.0);
-            let arr2 = arr[..min(3, arr.len())].iter();
-
-            println!("{:?}", arr2);
-
-            for d in db.multi_get(arr2.map(|(_d, str)| str)) {
-                if let Ok(Some(by)) = d {
-                    // println!("{:?}", bson::from_slice::<Def>(by.as_slice()).unwrap())
-                    println!(
-                        "{}",
-                        serde_yaml::to_string::<Def>(&from_reader::<Def, &[u8]>(&by)?)?
-                    )
-                }
+            for d in search(&mut db_w, &query) {
+                println!("{}", serde_yaml::to_string::<Def>(&d)?)
             }
         }
-        None => {
-            trie = load_trie(trie_path, trie_buf);
-        }
+        None => {}
     };
-
-    let db: &'static DB = Box::leak(Box::new(db));
-    let trie: &'static FuzzyTrie<String> = Box::leak(Box::new(trie));
-
     let rt = tokio::runtime::Runtime::new().unwrap();
+
     rt.block_on(async {
+        let db_tok = db.clone();
+
         let lookup = warp::get()
             .and(warp::path("q"))
             .and(warp::path::param::<String>())
-            .map(|word: String| {
+            .map(move |word: String| {
+                let db_r = db_tok.read().unwrap();
                 let word = percent_encoding::percent_decode_str(&word)
                     .decode_utf8()
                     .unwrap()
                     .to_string();
-                warp::reply::json(&api_q(db, trie, &word))
+                warp::reply::json(&api_q(&db_r, &word))
             });
 
-        let stat = warp::get().and(warp::path("stat")).map(|| {
-            warp::reply::json(&stat {
-                words_rocks: db
-                    .property_int_value("rocksdb.estimate-num-keys")
-                    .unwrap()
-                    .unwrap(),
-                words_trie: trie.into_values().len(),
-            })
-        });
+        let stat = warp::get()
+            .and(warp::path("stat"))
+            .map(|| warp::reply::json(&stat { words_rocks: 0 }));
 
         tokio::join!(
             warp::serve(lookup.or(stat)).run(([127, 0, 0, 1], 3030)),
-            repl(db, trie)
+            repl(&db_w)
         );
     });
 
@@ -216,11 +159,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 #[derive(Serialize, Deserialize)]
 struct stat {
-    words_trie: usize,
     words_rocks: u64,
 }
 
-async fn repl(db: &DB, trie: &FuzzyTrie<'_, String>) {
+async fn repl(db: &Table<DictTableConfig, true>) {
     loop {
         let li = readline().await.unwrap();
         let li = li.trim();
@@ -228,7 +170,7 @@ async fn repl(db: &DB, trie: &FuzzyTrie<'_, String>) {
             continue;
         }
 
-        match respond(li, &db, &trie) {
+        match respond(li, db) {
             Ok(quit) => {
                 if quit {
                     break;
@@ -247,14 +189,10 @@ async fn repl(db: &DB, trie: &FuzzyTrie<'_, String>) {
     }
 }
 
-fn respond(
-    line: &str,
-    db: &DB,
-    // trie_bf: &Vec<u8>,
-    trie: &FuzzyTrie<String>,
-) -> Result<bool, String> {
-    let arr = search(&db, &trie, line);
+fn respond(line: &str, db: &Table<DictTableConfig, true>) -> Result<bool, String> {
+    let arr = search(db, line);
 
+    println!("{}", arr.len());
     for d in arr.into_iter().map(|mut x| x.cli_pretty()) {
         println!("{}", d);
     }
@@ -262,14 +200,9 @@ fn respond(
     Ok(false)
 }
 
-fn api_q(
-    db: &DB,
-    // trie_bf: &Vec<u8>,
-    trie: &FuzzyTrie<String>,
-    query: &str,
-) -> Vec<Def> {
+fn api_q(db: &Table<DictTableConfig, true>, query: &str) -> Vec<Def> {
     println!("\nq: {}", query);
-    let arr = search(&db, &trie, query);
+    let arr = search(db, query);
 
     arr
 }
