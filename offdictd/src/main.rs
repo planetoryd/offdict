@@ -8,7 +8,7 @@ use std::{
 use clap::{Parser, Subcommand};
 
 use percent_encoding;
-use tokio::{self, sync::Mutex};
+use tokio::{self};
 use warp::Filter;
 
 use config::{Config, File, FileFormat};
@@ -76,13 +76,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     _db_path.push("rocks_t");
     let db_path = _db_path.to_str().unwrap();
 
-    let mut db = Arc::new(RwLock::new(open_db(&db_path)));
+    let db = Arc::new(RwLock::new(open_db(&db_path)));
 
     let yaml_defs: &'static mut Vec<Def> = Box::leak(Box::new(Vec::new()));
 
     println!("config: {:?}", &conf);
 
-    let db_a = db.clone();
+    let _db_a = db.clone();
     let mut db_w = db.write().unwrap();
     match args.command {
         Some(Commands::yaml {
@@ -146,7 +146,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let stat = warp::get()
             .and(warp::path("stat"))
-            .map(|| warp::reply::json(&stat { words_rocks: 0 }));
+            .map(|| warp::reply::json(&Stat { words_rocks: 0 }));
 
         tokio::join!(
             warp::serve(lookup.or(stat)).run(([127, 0, 0, 1], 3030)),
@@ -158,7 +158,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 #[derive(Serialize, Deserialize)]
-struct stat {
+struct Stat {
     words_rocks: u64,
 }
 

@@ -366,7 +366,7 @@ mod tests {
     use crate::DefNew;
 
     use super::Def;
-    use bincode::{de::read::IoReader, Options};
+    use bincode::{Options};
     use serde::{Deserialize, Serialize};
     pub use serde_yaml::{self};
     fn test_bincode<T: for<'a> Deserialize<'a> + Serialize + Debug + PartialEq>(value: T) {
