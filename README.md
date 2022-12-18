@@ -21,10 +21,10 @@ Import them with `offdict yaml -p 'path/OpenMdicts/<name>.yaml'`
 
 - [x] GUI: Clipboard watcher
 - [x] GUI: Import dictionaries from a folder of yaml
+- [ ] Queries seem to lag web rendering thread a bit
 - [ ] Export dictionaries
 - [ ] Decentralized sharing format ? IPLD ?
     - a protocol on revising dictionaries ?
-- [ ] Better serialization for rocksdb and fuzzy trie (currently cbor) ? 
 
 ```sh
 apt install libxcb-shape0-dev libxcb-xfixes0-dev # required for building clipboard-master

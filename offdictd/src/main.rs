@@ -1,4 +1,6 @@
 use std::{
+    borrow::Borrow,
+    cell::RefCell,
     path::PathBuf,
     sync::{Arc, RwLock},
 };
@@ -11,10 +13,8 @@ use percent_encoding;
 use tokio::{self};
 use warp::Filter;
 
-use config::{Config, File, FileFormat};
-use offdictd::*;
-
-use fuzzy_rocks::Table;
+use config::{Config, File, FileFormat, Map};
+use offdictd::{def_bin::WrapperDef, *};
 
 #[derive(Debug, Deserialize)]
 struct OffdictConfig {
@@ -33,23 +33,26 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Commands {
     #[command(
-        about = "Import definitions from an yaml file to rocksdb",
+        about = "Import definitions from an yaml file",
         arg_required_else_help = false
     )]
     yaml {
         #[arg(short = 'p', required = true)]
         path: String,
-        #[arg(short = 'n')]
+        #[arg(short = 'n', long)]
         name: Option<String>, // Name to be displayed
-        #[arg(short = 'c')]
+        #[arg(short = 'c', long)]
         check: bool,
-        #[arg(short = 's')]
+        #[arg(short = 's', long)]
         save: bool,
     },
     #[command(about = "Stats")]
     stat {},
     #[command(about = "Fuzzy query (prefix)")]
-    lookup { query: String },
+    lookup {
+        query: String,
+    },
+    // TODO: bincode import
     // #[command(about = "Convert an yaml file to cbor")]
     // cbor {
     //     // Converts a yaml to cbor and save it.
@@ -58,6 +61,7 @@ enum Commands {
     //     #[arg(short = 'n')]
     //     name: String, // Name to be displayed
     // },
+    reset {},
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -73,60 +77,64 @@ fn main() -> Result<(), Box<dyn Error>> {
     let conf: OffdictConfig = config.try_deserialize().unwrap();
 
     let mut _db_path = PathBuf::from(conf.data_path.clone());
-    _db_path.push("rocks_t");
     let db_path = _db_path.to_str().unwrap();
 
-    let db = Arc::new(RwLock::new(open_db(&db_path)));
+    let db = Arc::new(RwLock::new(offdict::open_db(db_path.to_owned())));
 
-    let yaml_defs: &'static mut Vec<Def> = Box::leak(Box::new(Vec::new()));
+    let mut yaml_defs: Vec<Def> = vec![];
 
     println!("config: {:?}", &conf);
-
     let _db_a = db.clone();
-    let mut db_w = db.write().unwrap();
-    match args.command {
-        Some(Commands::yaml {
-            path,
-            name,
-            check,
-            save,
-        }) => {
-            if check {
-                check_yaml(&path, save);
-                return Ok(());
-            }
-            let pa = PathBuf::from(&path);
-            let s = pa.file_stem().unwrap().to_str().unwrap().split_once(".");
-            let name1;
-
-            if name.is_none() {
-                if s.is_none() {
-                    println!("provide a name");
+    {
+        let mut db_w = db.write().unwrap();
+        match args.command {
+            Some(Commands::yaml {
+                path,
+                name,
+                check,
+                save,
+            }) => {
+                if check {
+                    Def::check_yaml(&path, save);
                     return Ok(());
-                } else {
-                    name1 = name.unwrap_or(s.unwrap().0.to_owned());
                 }
-            } else {
-                name1 = name.unwrap()
-            }
+                let pa = PathBuf::from(&path);
+                let s = pa.file_stem().unwrap().to_str().unwrap().split_once(".");
+                let name1;
 
-            let r = import_yaml(&mut db_w, yaml_defs, &path, &name1);
+                if name.is_none() {
+                    if s.is_none() {
+                        println!("provide a name");
+                        return Ok(());
+                    } else {
+                        name1 = name.unwrap_or(s.unwrap().0.to_owned());
+                    }
+                } else {
+                    name1 = name.unwrap()
+                }
 
-            match r {
-                Ok(()) => println!("imported"),
-                Err(e) => println!("{:?}", e),
+                match db_w.import_from_file(&path, &name1) {
+                    Ok(()) => println!("imported"),
+                    Err(e) => println!("{:?}", e),
+                }
             }
-        }
-        Some(Commands::stat {}) => {
-            println!("Words in database: {}", stat_db(&db_w));
-        }
-        Some(Commands::lookup { query }) => {
-            for d in search(&mut db_w, &query) {
-                println!("{}", serde_yaml::to_string::<Def>(&d)?)
+            Some(Commands::stat {}) => {
+                let s = db_w.stat();
+                println!("Words in database: {}", s.words);
             }
-        }
-        None => {}
-    };
+            Some(Commands::lookup { query }) => {
+                for d in db_w.search(&query, 1, true) {
+                    let list: Vec<Def> = d.vec_human();
+                    println!("{}", serde_yaml::to_string::<Vec<Def>>(&list)?)
+                }
+            }
+            Some(Commands::reset {}) => {
+                db_w.reset_db();
+                println!("reset.");
+            }
+            None => {}
+        };
+    }
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     rt.block_on(async {
@@ -146,11 +154,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let stat = warp::get()
             .and(warp::path("stat"))
-            .map(|| warp::reply::json(&Stat { words_rocks: 0 }));
+            .map(|| warp::reply::json(&Stat { words: 0 }));
 
         tokio::join!(
             warp::serve(lookup.or(stat)).run(([127, 0, 0, 1], 3030)),
-            repl(&db_w)
+            repl(db.clone())
         );
     });
 
@@ -159,52 +167,61 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 #[derive(Serialize, Deserialize)]
 struct Stat {
-    words_rocks: u64,
+    words: u64,
 }
 
-async fn repl(db: &Table<DictTableConfig, true>) {
+async fn repl(db_: Arc<RwLock<offdict>>) {
     loop {
         let li = readline().await.unwrap();
         let li = li.trim();
         if li.is_empty() {
             continue;
-        }
+        } else {
+            let db = db_.read().unwrap();
 
-        match respond(li, db) {
-            Ok(quit) => {
-                if quit {
-                    break;
+            match respond(li, db.borrow()) {
+                Ok(quit) => {
+                    if quit {
+                        break;
+                    }
                 }
-            }
-            Err(err) => {
-                write!(std::io::stdout(), "{}", err)
-                    .map_err(|e| e.to_string())
-                    .unwrap();
-                std::io::stdout()
-                    .flush()
-                    .map_err(|e| e.to_string())
-                    .unwrap();
+                Err(err) => {
+                    write!(std::io::stdout(), "{}", err)
+                        .map_err(|e| e.to_string())
+                        .unwrap();
+                    std::io::stdout()
+                        .flush()
+                        .map_err(|e| e.to_string())
+                        .unwrap();
+                }
             }
         }
     }
 }
 
-fn respond(line: &str, db: &Table<DictTableConfig, true>) -> Result<bool, String> {
-    let arr = search(db, line);
+fn respond(line: &str, db: &offdict) -> Result<bool, String> {
+    let arr = db.search(line, 1, true);
 
-    println!("{}", arr.len());
-    for d in arr.into_iter().map(|mut x| x.cli_pretty()) {
-        println!("{}", d);
+    println!("{} results", arr.len());
+    for d in arr.into_iter() {
+        println!(
+            "{}",
+            serde_yaml::to_string::<Vec<Def>>(&d.vec_human()).unwrap()
+        );
     }
 
     Ok(false)
 }
 
-fn api_q(db: &Table<DictTableConfig, true>, query: &str) -> Vec<Def> {
+fn api_q(db: &offdict, query: &str) -> Map<String, Vec<Def>> {
     println!("\nq: {}", query);
-    let arr = search(db, query);
+    let arr = db.search(&query, 5, true);
+    let mut m = Map::new();
+    for wr in arr {
+        m.insert(wr.word.clone(), wr.vec_human());
+    }
 
-    arr
+    m
 }
 
 // fn api_lookup(res:Vec<Def>)

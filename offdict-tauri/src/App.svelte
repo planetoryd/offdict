@@ -19,11 +19,10 @@
       id: 0,
     },
   ];
-  let fuzzy_res = [];
+  let qucik_res = [];
   let currentWord = undefined;
   let currentIndex = -1;
   let inputWord;
-  let word_defs; // Def obj for single word
   let def_list = []; // Final list of defs
   let show_not_found = true;
 
@@ -54,11 +53,7 @@
     invoke("defs", { query: currentWord })
       .then((r) => {
         console.log(r);
-        word_defs = r;
-        if (word_defs) {
-          def_list = word_defs.definitions;
-          console.log(def_list);
-        }
+        def_list = r as [];
       })
       .catch((e) => {
         console.log(e);
@@ -67,14 +62,27 @@
 
   async function onInput() {
     // candidates = ;
-    fuzzy_res = await invoke("candidates", { query: inputWord });
+    let qucik_res: [any] = await invoke("defs", {
+      query: inputWord,
+      fuzzy: false,
+    });
     // console.log(await invoke("defs", { query: currentWord }));
-    candidates = fuzzy_res.map((e, i) => ({ word: e, id: i }));
-    if (fuzzy_res[0]) {
-      currentWord = fuzzy_res[0];
+    console.log(def_list);
+    candidates = qucik_res.map((e, i) => ({ word: e.word, id: i }));
+    if (qucik_res[0]) {
+      def_list = qucik_res; // update only when results present
+      currentWord = qucik_res[0].word;
       currentIndex = 0;
-      show();
+      // show();
     } else {
+      // show loading status
+      
+      let fuzzy_res: [any] = await invoke("defs", {
+        query: inputWord,
+        fuzzy: true,
+      });
+      def_list = fuzzy_res;
+      console.log("fuzzy", fuzzy_res);
       if (show_not_found)
         toast.error("not found", { position: "bottom-center", duration: 800 });
     }
@@ -151,8 +159,8 @@
           if (e.key === "ArrowDown") {
             if (dropdown)
               document.querySelector(".first .menu-item").firstChild.focus();
-            else if (fuzzy_res[currentIndex + 1]) {
-              currentWord = fuzzy_res[++currentIndex];
+            else if (qucik_res[currentIndex + 1]) {
+              currentWord = qucik_res[++currentIndex];
               show();
             }
             e.stopPropagation();
@@ -161,8 +169,8 @@
           if (e.key === "ArrowUp") {
             if (dropdown)
               document.querySelector(".first .menu-item").firstChild.focus();
-            else if (fuzzy_res[currentIndex - 1]) {
-              currentWord = fuzzy_res[--currentIndex];
+            else if (qucik_res[currentIndex - 1]) {
+              currentWord = qucik_res[--currentIndex];
               show();
             }
             e.stopPropagation();

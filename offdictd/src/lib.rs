@@ -1,410 +1,377 @@
 #![allow(unused_variables)]
+
 pub use serde::{Deserialize, Serialize};
 pub use serde_yaml::{self};
 pub use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use std::collections::BTreeSet;
-use std::{self};
+
+use std::collections::{BTreeSet, HashMap};
+
+use std::iter::FromIterator;
+
+use std::{self, vec};
 
 // use bson::{self, Array, Serializer};
 pub use std::cmp::min;
 
 pub use std::error::Error;
 
-pub use std::fs::File;
+pub use std::fs::{create_dir_all, File};
 pub use std::io::{Read, Write};
+use std::path::Path;
 
 // use lazy_static;
 // use regex::Regex;
 
 use timed::timed;
 
+#[macro_use]
+extern crate tantivy;
+
+use std::cmp::Ordering::Equal;
+use tantivy::collector::{Count, TopDocs};
+use tantivy::query::{FuzzyTermQuery, QueryParser, RegexQuery, TermQuery};
+use tantivy::schema::{*};
+use tantivy::{DocAddress, Index, IndexWriter};
+use tantivy::{IndexReader};
+
+use debug_print::debug_println;
+
 use serde_ignored;
 
-use fuzzy_rocks::{ DistanceFunction, Table, TableConfig};
+pub type DefItemInDB = def_bin::WrapperDef;
+pub type DefItem = def_bin::Def;
+pub type DB = IndexReader;
 
-pub fn search(db: &Table<DictTableConfig, true>, query: &str) -> Vec<Def> {
-    let f = db.lookup_fuzzy(query, None).unwrap();
-
-    f.map(|(r, d)| {
-        let r = db.get(r);
-        r.unwrap().1
-    })
-    .collect::<Vec<Def>>()
+pub struct stat {
+    pub words: u64,
 }
 
-#[timed]
-// exact word
-pub fn search_single(db: &mut Table<DictTableConfig, true>, word: &str) -> Option<Def> {
-    if let Ok(mut ids) = db.lookup_exact(word) {
-        let id = ids.next().unwrap();
-        let r = db.get_value(id).unwrap();
-        Some(r)
-    } else {
-        None
+pub type candidate = (f32, DocAddress);
+pub type candidates = Vec<candidate>;
+pub struct offdict {
+    // tantivy stuff
+    reader: IndexReader,
+    writer: IndexWriter,
+    index: Index,
+    query_parser: QueryParser,
+    schema: Schema,
+    path_tantivy: String,
+}
+
+impl offdict {
+    pub fn serialize<T: Serialize>(v: &T) -> Result<Vec<u8>, Box<bincode::ErrorKind>> {
+        bincode::serialize(v)
     }
-}
 
-#[timed]
-pub fn import_yaml<'a>(
-    db: &mut Table<DictTableConfig, true>,
-    yaml_defs: &mut Vec<Def>,
-    path: &str,
-    name: &String,
-) -> Result<(), Box<dyn Error>> {
-    let file = File::open(path).expect("Unable to open file");
-    *yaml_defs = serde_yaml::from_reader(file)?;
-    for def in yaml_defs.iter_mut() {
-        (*def).dictName = Some(name.clone());
+    pub fn deserialize<'a, T: Deserialize<'a>>(v: &'a [u8]) -> Result<T, Box<bincode::ErrorKind>> {
+        bincode::deserialize(v)
     }
-    import_defs(yaml_defs, db);
-    Ok(())
-}
 
-pub fn check_yaml(path: &str, save: bool) {
-    let file = File::open(path).expect("Unable to open file");
-    let d = serde_yaml::Deserializer::from_reader(file);
-    let mut unused = BTreeSet::new();
+    pub fn open_db(path: String) -> Self {
+        let mut schema_builder = Schema::builder();
+        // associate one word with one wrapperDef
+        schema_builder.add_text_field("word", STRING);
+        schema_builder.add_bytes_field("data", FAST | STORED);
+        schema_builder.add_u64_field("version", FAST | STORED);
 
-    let p: Vec<Def> = serde_ignored::deserialize(d, |path| {
-        unused.insert(path.to_string());
-    })
-    .unwrap();
+        let schema = schema_builder.build();
+        let index;
+        let pp = Path::new(&path);
+        let word = schema.get_field("word").unwrap();
+        if pp.is_dir() {
+            index = Index::open_in_dir(&path).unwrap();
+        } else {
+            create_dir_all(pp).unwrap();
+            index = Index::create_in_dir(&path, schema.clone()).unwrap();
+        }
 
-    if save {
-        let consumed = File::create(path.replace(".yaml", ".x.yaml")).unwrap();
-
-        let par = p.into_iter().map(normalize_def).collect::<Vec<Def>>();
-        serde_yaml::to_writer(consumed, &par).unwrap();
+        offdict {
+            path_tantivy: path,
+            reader: index.reader().unwrap(),
+            writer: index.writer(3_000_000).unwrap(),
+            query_parser: QueryParser::for_index(&index, vec![word]),
+            index: index,
+            schema,
+        }
     }
-    println!("{:?}", unused);
-}
 
-#[timed]
-// Updates word-def mappings, deduping dup defs
-pub fn import_defs<'a>(defs: &Vec<Def>, db: &mut Table<DictTableConfig, true>) {
-    // let mut trie: FuzzyTrie<&'a str> = FuzzyTrie::new(2, false);
-    for def in defs {
-        db.insert(def.word.as_ref().unwrap().as_str(), def).unwrap();
+    pub fn reset_db(&mut self) {
+        self.writer.delete_all_documents().unwrap();
+        self.writer.commit().unwrap();
     }
-}
 
-pub fn stat_db(db: &Table<DictTableConfig, true>) -> u32 {
-    0
-}
+    #[timed]
+    pub fn candidates(&self, query: &str, top: usize, fuzzy: bool) -> candidates {
+        let searcher = self.reader.searcher();
+        let word = self.schema.get_field("word").unwrap();
+        if fuzzy {
+            let term = Term::from_field_text(word, query);
+            let term_query = FuzzyTermQuery::new_prefix(term, 2, true);
+            let (top_docs, count) = searcher
+                .search(&term_query, &(TopDocs::with_limit(top), Count))
+                .unwrap();
 
-pub struct DictTableConfig();
+            top_docs
+        } else {
+            let term = Term::from_field_text(word, query);
+            let term_query = TermQuery::new(term, IndexRecordOption::Basic);
+            let (top_docs_t, count) = searcher
+                .search(&term_query, &(TopDocs::with_limit(top), Count))
+                .unwrap();
+            debug_println!("TermQuery {}, count {}", query, count);
+            if count >= top {
+                top_docs_t
+            } else {
+                let q = query.to_owned() + ".*"; // regex seems to have poor scoring
+                let term_query = RegexQuery::from_pattern(&q, word).unwrap();
+                let (top_docs_r, count) = searcher
+                    .search(&term_query, &(TopDocs::with_limit(top), Count))
+                    .unwrap();
 
-impl TableConfig for DictTableConfig {
-    type KeyCharT = char;
-    type DistanceT = u8;
-    type ValueT = Def;
-    const UTF8_KEYS: bool = true;
-    const MAX_DELETES: usize = 2;
-    const MEANINGFUL_KEY_LEN: usize = 12;
-    const GROUP_VARIANT_OVERLAP_THRESHOLD: usize = 5;
-    const DISTANCE_FUNCTION: DistanceFunction<Self::KeyCharT, Self::DistanceT> =
-        Self::levenstein_distance;
-}
+                debug_println!("RegexQuery {}, count {}", query, count);
+                // the larger the more relevant
 
-pub fn open_db(path: &str) -> Table<DictTableConfig, true> {
-    let table = Table::<DictTableConfig, true>::new(path, DictTableConfig()).unwrap();
-    // table.reset().unwrap();
+                let mut set: HashMap<DocAddress, f32> =
+                    HashMap::from_iter(top_docs_r.into_iter().map(|(a, b)| (b, a)));
+                top_docs_t.into_iter().for_each(|(s, d)| {
+                    set.insert(d, s);
+                });
 
-    table
-}
+                let mut v: candidates = set.into_iter().map(|(a, b)| (b, a)).collect();
+                v.sort_by(|(a, _), (b, _)| b.partial_cmp(a).unwrap_or(Equal));
 
-fn normalize_def(mut d: Def) -> Def {
-    if d.groups.is_some() {
-        d.definitions = d.groups;
-        d.groups = None;
+                dbg!(&v);
+                v
+            }
+        }
     }
-    if d._wrapper {
-        unreachable!("_wrapper=true");
+
+    #[timed]
+    pub fn retrieve(&self, cand: candidate) -> Option<DefItemInDB> {
+        let searcher = self.reader.searcher();
+        let retrieved_doc = searcher.doc(cand.1).unwrap();
+        if retrieved_doc.is_empty() {
+            debug_assert!(false);
+        }
+        let v = retrieved_doc
+            .get_first(self.schema.get_field("data").unwrap())
+            .unwrap();
+        if let Value::Bytes(b) = v {
+            let d: DefItemInDB = Self::deserialize(b).unwrap();
+            Some(d)
+        } else {
+            None
+        }
     }
-    // d = recursive_path_shorten(d);
-    d
-}
 
-// Defs are merged into one single Def
-// fn def_merge(
-//     key: &[u8], // The word
-//     existing_val: Option<&[u8]>,
-//     operands: &MergeOperands, // List of new values
-// ) -> Option<Vec<u8>> {
-//     let _result: Vec<u8> = Vec::new();
-//     let ops = Vec::from_iter(operands);
-//     let mut _def: Def;
-//     let mut set = BTreeSet::<Def>::new();
-//     let mut wrapper: Def = Def {
-//         word: Some(std::str::from_utf8(key).unwrap().to_owned()),
-//         definitions: None, // Definitions from different dicts
-//         groups: None,
-//         // Can depend on sub-definition
-//         EN: None,
-//         CN: None,
-//         pronunciation: None,
-//         examples: None,
-//         etymology: None,
-//         related: None,
-//         // -
-//         index: None, // deprecated
-//         dictName: None,
-//         info: None,
-//         title: None,
-//         r#type: None,
-//         t1: None,
-//         t2: None,
-//         tip: None,
-//         _wrapper: true,
-//     };
-//     // TODO: How to structure the def. Compare defs in existing value, and ops
-//     // Create a wrapper def for all imported def
-//     let x;
-//     match existing_val {
-//         Some(_bytes) => {
-//             let p = from_reader::<Def, &[u8]>(existing_val.unwrap());
-//             match p {
-//                 Ok(mut d) => {
-//                     if !d._wrapper {
-//                         x = d;
-//                         set.insert(x);
-//                     } else {
-//                         d.definitions.unwrap_or_default().into_iter().for_each(|k| {
-//                             set.insert(k);
-//                         });
-//                         d.definitions = None;
-//                         wrapper = d;
-//                     }
-//                 }
-//                 _ => (),
-//             }
-//         }
-//         None => (),
-//     }
+    #[timed]
+    pub fn search(&self, query: &str, top: usize, fuzzy: bool) -> Vec<DefItemInDB> {
+        let cands = self.candidates(query, top, fuzzy);
 
-//     for bytes in ops {
-//         match from_reader::<Def, &[u8]>(bytes) {
-//             Ok(mut parsed) => {
-//                 parsed.index = None; // remove it
-//                 if parsed._wrapper {
-//                     parsed
-//                         .definitions
-//                         .unwrap_or_default()
-//                         .into_iter()
-//                         .for_each(|k| {
-//                             set.insert(k);
-//                         });
-//                 } else {
-//                     set.insert(parsed);
-//                 }
-//             }
-//             Err(_) => continue,
-//         };
-//     }
+        let searcher = self.reader.searcher();
+        let word = self.schema.get_field("word").unwrap();
 
-//     wrapper.definitions = Some(set.into_iter().map(normalize_def).collect());
+        let top_docs = cands;
 
-//     let mut v: Vec<u8> = Vec::new();
-//     into_writer(&wrapper, &mut v);
-//     Some(v)
-//     // Some(flexbuffers::to_vec(&wrapper).unwrap())
-// }
+        let mut res: Vec<DefItemInDB> = vec![];
 
-// Notes on dictionary format
-// Generally a dictionary is a Vec<Def>
-// A self-sufficient dictionary is a Vec<Def> that tries to cover a topic
-// The Vec<Def> can be serialized to Yaml, but I don't like it.
-// Let's call self-sufficient dictionaries namespaces.
+        for (score, doc_address) in top_docs {
+            let retrieved_doc = searcher.doc(doc_address).unwrap();
+            if retrieved_doc.is_empty() {
+                debug_assert!(false);
+                continue;
+            }
+            let v = retrieved_doc
+                .get_first(self.schema.get_field("data").unwrap())
+                .unwrap();
+            if let Value::Bytes(b) = v {
+                let d: DefItemInDB = Self::deserialize(b).unwrap();
 
-// A dictionary can be an IPLD block containing its description, revision, and all the CIDs that represent a Vec<Def> (we dont care about how the data is chunked)
+                // https://github.com/quickwit-oss/tantivy/issues/563
+                // TODO: Use master branch instead of the fork when ready
+                // The fork has distance scoring done right
 
-impl Def {
-    pub fn cli_pretty(&mut self) -> String {
-        self._wrapper = false;
-        let r = serde_yaml::to_string(self).unwrap();
-        // self._wrapper = true;
-        r
+                res.push(d);
+            }
+            // debug_println!("{}", self.schema.to_json(&retrieved_doc));
+        }
+
+        res
     }
-}
 
-// New format
-#[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct DefNew {
-    pub word: String,
-}
+    // Vec<def_edit::DefNew>
+    pub fn export_all_yaml(&self, path: &str) {
+        let file = File::create(path).expect("Unable to open file");
+        let mut defs: Vec<DefItemInDB> = vec![];
+        let searcher = self.reader.searcher();
 
-#[allow(non_camel_case_types)]
-#[allow(non_snake_case)]
-#[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Def {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub definitions: Option<Vec<Def>>,
-    // Hierarchical definitions. Definitions from different dictionaries, and in the same dictionary there is multiple definitions
-    // Merging the definitions can be considered.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub groups: Option<Vec<Def>>, // Alias for definitions
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub etymology: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub EN: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pronunciation: Option<pronunciation>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub info: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub r#type: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub index: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub word: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub CN: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub t1: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub t2: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub examples: Option<Vec<example>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tip: Option<Vec<tip>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub related: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub dictName: Option<String>,
-    #[serde(default = "default_as_false", skip_serializing_if = "is_false")]
-    pub _wrapper: bool,
-}
+        for segment_reader in searcher.segment_readers() {
+            let s = segment_reader.get_store_reader().unwrap();
 
-impl Default for Def {
-    fn default() -> Self {
-        Def {
-            word: None,
-            definitions: None, // Definitions from different dicts
-            groups: None,
-            // Can depend on sub-definition
-            EN: None,
-            CN: None,
-            pronunciation: None,
-            examples: None,
-            etymology: None,
-            related: None,
-            // -
-            index: None, // deprecated
-            dictName: None,
-            info: None,
-            title: None,
-            r#type: None,
-            t1: None,
-            t2: None,
-            tip: None,
-            _wrapper: false,
+            for dd in segment_reader.doc_ids_alive() {
+                let doc = s.get(dd).unwrap();
+                let v = doc
+                    .get_first(self.schema.get_field("data").unwrap())
+                    .unwrap();
+                if let Value::Bytes(b) = v {
+                    let d = Self::deserialize(&b).unwrap();
+                    defs.push(d);
+                }
+            }
+        }
+
+        let flat = flatten(defs);
+        let flat: Vec<DefItem> = flat.into_iter().map(|d| d.into()).collect();
+        serde_yaml::to_writer(file, &flat).unwrap();
+    }
+
+    pub fn import_from_file(&mut self, path: &str, dict_name: &str) -> Result<(), Box<dyn Error>> {
+        let ds = Def::load_yaml(&path, &dict_name)?;
+        debug_println!("loaded {} DefNew", ds.len());
+        self.import_defs(ds)?;
+
+        Ok(())
+    }
+
+    pub fn import_defs(&mut self, defs: Vec<DefItem>) -> Result<(), Box<dyn Error>> {
+        let ws: Vec<DefItemInDB> = defs.into_iter().map(|d| d.into()).collect();
+        self.import_wrapped(ws);
+        Ok(())
+    }
+
+    pub fn import_wrapped(&mut self, wrapped: Vec<DefItemInDB>) {
+        let searcher = self.reader.searcher();
+        let data = self.schema.get_field("data").unwrap();
+        let word = self.schema.get_field("word").unwrap();
+        for mut d in wrapped {
+            let query = TermQuery::new(
+                Term::from_field_text(word, d.word.as_ref()),
+                IndexRecordOption::Basic,
+            );
+            let ve = searcher.search(&query, &TopDocs::with_limit(1)).unwrap();
+            if ve.len() > 0 {
+                let (s, doca) = ve[0];
+                let doc = searcher.doc(doca).unwrap();
+                let v = doc.get_first(data).unwrap();
+                if let Value::Bytes(b) = v {
+                    let mut it: DefItemInDB = Self::deserialize(b).unwrap();
+                    // merge and override the in-db map with the new map
+                    it = it.merge(&mut d);
+                    self.writer
+                        .delete_term(Term::from_field_text(word, d.word.as_str()));
+
+                    let byt = bincode::serialize(&d).unwrap();
+                    let k = byt.as_slice();
+                    self.writer.add_document(doc!(word=>d.word,data=>k));
+                }
+            } else {
+                self.writer.add_document(doc!(
+                    word => d.word.clone(),
+                    data => Self::serialize(&d).unwrap()
+                ));
+            }
+        }
+        self.writer.commit().unwrap();
+    }
+
+    pub fn stat(&self) -> stat {
+        let searcher = self.reader.searcher();
+
+        stat {
+            words: searcher.num_docs(),
         }
     }
 }
 
-fn is_false(p: &bool) -> bool {
-    !p.clone()
-}
+// Database, network, import/export, edit, how
+// Checkout a dictionary for editing.
+// Export as bincoded bytes
+// Sync data from Locutus and update key/values
+// or, build database on Locutus
+// Locutus and the index might need different data structures, which is more ideal.
+// so maybe not.
 
-fn default_as_false() -> bool {
-    false
-}
+impl<'a> AnyDef<'a, Self> for Def {
+    fn load_yaml(path: &str, name: &str) -> Result<Vec<DefItem>, Box<dyn Error>> {
+        let file = File::open(path).expect("Unable to open file");
+        let mut yaml_defs: Vec<Def> = serde_yaml::from_reader(file)?;
+        for def in yaml_defs.iter_mut() {
+            (*def).dictName = Some(name.to_owned());
+        }
 
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
-#[serde(untagged)]
-pub enum example {
-    obj(example_obj),
-    str(String),
-    none,
-}
+        let vec_d: Vec<DefItem> = yaml_defs.into_iter().map(|x| x.into()).collect();
 
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
-#[serde(untagged)]
-pub enum pronunciation {
-    vec(Vec<Option<String>>),
-    str(String),
-    none,
-}
-
-#[allow(non_snake_case)]
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct example_obj {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    CN: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    EN: Option<String>,
-}
-
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
-#[serde(untagged)]
-pub enum tip {
-    obj(tip_obj),
-    str(String),
-    vec_str(Vec<String>),
-    none,
-}
-#[allow(non_snake_case)]
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct tip_obj {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    CN: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    EN: Option<String>,
-}
-#[cfg(test)]
-mod tests {
-    use std::{fmt::Debug};
-
-    use crate::DefNew;
-
-    use super::Def;
-    use bincode::{Options};
-    use serde::{Deserialize, Serialize};
-    pub use serde_yaml::{self};
-    fn test_bincode<T: for<'a> Deserialize<'a> + Serialize + Debug + PartialEq>(value: T) {
-        let record_coder = bincode::DefaultOptions::new()
-            .with_varint_encoding()
-            .with_little_endian();
-
-        let value_bytes = record_coder.serialize(&value).unwrap();
-
-        let value_d: T = record_coder.deserialize(&value_bytes).unwrap();
-        assert_eq!(value, value_d);
+        Ok(vec_d)
     }
 
-    #[test]
-    #[should_panic] // The original struct is too weird ...
-    fn bincode_orig_def() {
-        let value: Def = Def::default();
+    // Validates the old def sources are correctly parsed by serde, and converted
+    fn check_yaml(path: &str, save: bool) {
+        let file = File::open(path).expect("Unable to open file");
+        let d = serde_yaml::Deserializer::from_reader(file);
+        let mut unused = BTreeSet::new();
 
-        test_bincode(value);
-    }
+        let p: Vec<Self> = serde_ignored::deserialize(d, |path| {
+            unused.insert(path.to_string());
+        })
+        .unwrap();
 
-    #[test]
-    fn bincode_def() {
-        let value: DefNew = DefNew {
-            word: "nice".to_owned(),
-        };
+        if save {
+            let consumed = File::create(path.replace(".yaml", ".1.yaml")).unwrap();
 
-        test_bincode(value);
-    }
+            let par = p.into_iter().collect::<Vec<Self>>();
+            serde_yaml::to_writer(consumed, &par).unwrap();
 
-    #[test]
-    fn yaml() {
-        let value: Def = Def::default();
+            let converted = File::create(path.replace(".yaml", ".2.yaml")).unwrap();
 
-        let mut value_bytes = Vec::new();
-        serde_yaml::to_writer(&mut value_bytes, &value).unwrap();
-
-        let value_d: Def = serde_yaml::from_reader(value_bytes.as_slice()).unwrap();
-        assert_eq!(value, value_d);
+            let con: Vec<DefItem> = par.into_iter().map(|x| x.into()).collect();
+            serde_yaml::to_writer(converted, &con).unwrap();
+        }
+        println!("{:?}", unused);
     }
 }
+
+// To import DefNew from
+pub trait AnyDef<'a, T: Deserialize<'a>> {
+    fn load_yaml(path: &str, name: &str) -> Result<Vec<DefItem>, Box<dyn Error>>;
+
+    fn check_yaml(path: &str, save: bool);
+}
+
+// store in database as wrapped
+// unwrapped in sources
+pub fn flatten(wr: Vec<DefItemInDB>) -> Vec<DefItem> {
+    let mut res = Vec::new();
+    for wrapper in wr.into_iter() {
+        for (_, d) in wrapper.items.into_iter() {
+            res.push(d)
+        }
+    }
+
+    res
+}
+
+impl Def {
+    fn normalize_def(mut self) -> Self {
+        if self.groups.is_some() {
+            self.definitions = self.groups;
+            self.groups = None;
+        }
+        // d = recursive_path_shorten(d);
+        self
+    }
+
+    fn normalize_def_ref(&mut self) {
+        if self.groups.is_some() {
+            std::mem::swap(&mut self.definitions, &mut self.groups);
+            // let x = self.groups;
+            self.groups = None;
+        }
+    }
+}
+
+pub use def::*;
+pub mod def;
+mod tests;
+
+pub mod def_bin;

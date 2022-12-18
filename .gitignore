@@ -8,3 +8,5 @@ yarn.lock
 .vscode
 Cargo.lock
 data
+out.yaml
+dict.*.yaml
