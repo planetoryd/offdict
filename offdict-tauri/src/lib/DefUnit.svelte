@@ -101,7 +101,7 @@
   .EN,
   .titl {
     color: #f1f3f5;
-    background: #868e96d2;
+    background: #868e96ce;
     padding: 4px;
     // border-radius: 2px;
     margin-top: 5px;
@@ -110,9 +110,11 @@
     padding-right: 10px;
     padding-top: 5px;
     padding-bottom: 5px;
+    border-radius: 5px;
   }
   .info {
     color: #868e96;
+    border-radius: 5px;
   }
   .explain {
     margin-bottom: 10px;

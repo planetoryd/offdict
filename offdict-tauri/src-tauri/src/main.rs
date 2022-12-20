@@ -4,14 +4,22 @@
 )]
 use clipboard_master::{CallbackResult, ClipboardHandler, Master};
 use config::{Config, File, FileFormat};
+use gdkx11::gdk::ffi::GDK_CURRENT_TIME;
 use offdictd::{self, def_bin::WrapperDef, *};
 use rust_stemmers::{Algorithm, Stemmer};
 use std::{borrow::Cow, env, fs, path::PathBuf, sync::Arc, sync::RwLock, thread};
 use tauri::{
-    self, api::dialog, ClipboardManager, GlobalShortcutManager, Manager, Window, WindowEvent,
+    self, api::dialog, ClipboardManager, GlobalShortcutManager, Manager, PhysicalPosition, Window,
+    WindowEvent, utils::debug_eprintln,
 };
 use timed::timed;
 
+use gtk::{
+    gdk,
+    traits::{GtkWindowExt, WidgetExt},
+    ApplicationWindow,
+};
+use gtk::{prelude::*, HeaderBar};
 use std::io;
 use tauri_plugin_positioner::{Position, WindowExt};
 
@@ -21,21 +29,39 @@ struct Handler<T: ClipboardManager> {
     en_stemmer: Stemmer,
 }
 
+static mut pos: Option<PhysicalPosition<i32>> = None;
+
 impl<T: ClipboardManager> ClipboardHandler for Handler<T> {
     fn on_clipboard_change(&mut self) -> CallbackResult {
-        let k = self.clip.read_text().unwrap().unwrap();
+        let k = self.clip.read_text().unwrap().unwrap_or_default();
         // Clean up raw clipboard content, do fuzzy search, skip if no result, and stem, repeat.
         // let r = self.en_stemmer.stem(cleanup_clipboard_input(&k));
+        if k.len() > 25 {
+            return CallbackResult::Next;
+        }
+
         let r: Cow<str> = Cow::Borrowed(cleanup_clipboard_input(&k));
 
         println!("clip: {}", r.as_ref());
         self.app.emit("clip", r.as_ref()).unwrap();
-        if !self.app.is_visible().unwrap() {
-            self.app.show().unwrap();
-        }
+        // self.app.unminimize().unwrap();
+        // self.app.show().unwrap();
+        // let win = self.app.gtk_window().unwrap();
+        // win.animation
+        // win.present();
+        // if !self.app.is_visible().unwrap() {
+        //     self.app.show().unwrap();
+        // }
+        restore_pos(&self.app);
         self.app.set_always_on_top(true).unwrap();
+        self.app.show().unwrap();
+
         // doesnt really work on kde, only sets it glowy
         // self.app.set_focus().expect("cannot focus window");
+
+        unsafe {
+            ENTRY.as_ref().unwrap().set_text(&r);
+        }
 
         CallbackResult::Next
     }
@@ -122,7 +148,112 @@ fn import<'a>(state: tauri::State<'a, OffdictState>) {
         });
 }
 
+static mut ENTRY: Option<gtk::Entry> = None;
 static mut w: Option<Window> = None;
+static mut state_: Option<Arc<InnerState>> = None;
+
+const CSS: &[u8] = b"
+headerbar entry,
+headerbar spinbutton,
+headerbar button,
+headerbar separator {
+    margin-top: 0px; /* same as headerbar side padding for nicer proportions */
+    margin-bottom: 0px;
+}
+
+
+headerbar {
+    min-height: 0;
+    padding-left: 2px; /* same as childrens vertical margins for nicer proportions */
+    padding-right: 2px;
+    margin: 0px; /* same as headerbar side padding for nicer proportions */
+    padding: 0px;
+}
+
+.inputheader entry {
+    margin: 10px
+}
+
+.inputheader button {
+	margin: 10 10px 10px 0px;
+}
+.inputheader {
+	padding-left: 25px;
+}
+               ";
+
+fn save_pos(win: &Window) {
+    unsafe {
+        pos = Some(win.outer_position().unwrap());
+    }
+}
+
+fn restore_pos(win: &Window) {
+    // unsafe {
+    //     win.set_position(pos.unwrap()).unwrap();
+    // }
+    if !win.is_visible().unwrap() {
+        win.move_window(Position::BottomRight)
+            .expect("cannot move window");
+    }
+}
+
+fn plain_header() -> HeaderBar {
+    let header = gtk::HeaderBar::builder()
+        .opacity(1.0)
+        .title("Offdict")
+        .visible(true)
+        .build();
+
+    header
+}
+
+fn input_header() -> HeaderBar {
+    let header = gtk::HeaderBar::builder()
+        .opacity(1.0)
+        .visible(true)
+        .hexpand(true)
+        .build();
+    let bo = gtk::Box::builder().visible(true).hexpand(true).build();
+    let btn = gtk::Button::builder().visible(true).label("import").build();
+    let en = unsafe {
+        ENTRY = Some(gtk::Entry::builder().visible(true).build());
+        ENTRY.as_ref().unwrap()
+    };
+    bo.pack_start(en, true, true, 0);
+    en.connect_changed(|e| {
+        dbg!(e.text());
+        onInput(e.text().as_str());
+    });
+    bo.pack_end(&btn, false, false, 0);
+    btn.connect_clicked(|b|{
+        println!("import btn");
+    });
+    header.set_custom_title(Some(&bo));
+    header.style_context().add_class("inputheader");
+
+    header
+}
+
+fn onInput(s: &str) {
+    let db_ = unsafe { state_.as_ref().unwrap().db.read() };
+
+    let db = db_.as_ref().unwrap().as_ref().unwrap();
+
+    let mut d = db.search(s, 5, false);
+    let mut def_list = offdictd::flatten(d);
+    if def_list.is_empty() {
+        d = db.search(s, 5, true);
+        def_list = offdictd::flatten(d);
+        unsafe {
+            w.as_ref().unwrap().emit("def_list", &def_list).unwrap();
+        }
+    } else {
+        unsafe {
+            w.as_ref().unwrap().emit("def_list", &def_list).unwrap();
+        }
+    }
+}
 
 fn main() {
     let x = tauri::Builder::default()
@@ -142,43 +273,65 @@ fn main() {
                 let window = app.get_window("main").unwrap();
                 let w_on_ev = app.get_window("main").unwrap();
                 let w_on_shortcut = app.get_window("main").unwrap();
+                let w_on_esc = app.get_window("main").unwrap();
 
                 unsafe {
                     w = Some(app.get_window("main").unwrap());
                 }
 
-                window.set_always_on_top(true).unwrap();
+                let win = window.gtk_window().unwrap();
+                let header = input_header();
+                let provider = gtk::CssProvider::new();
+                provider.load_from_data(&CSS).unwrap();
+
+                gtk::StyleContext::add_provider_for_screen(
+                    &gdk::Screen::default().expect("Error initializing gtk css provider."),
+                    &provider,
+                    gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+                );
+                // win.add(&header);
+                win.set_titlebar(Some(&header));
+
+                win.set_border_width(0);
+                // window.set_decorations(true).unwrap();
+                // window.set_always_on_top(true).unwrap();
                 // window.set_focus().unwrap();
                 window
                     .move_window(Position::BottomRight)
                     .expect("cannot move window");
 
-                let _gtk_w = window.gtk_window().unwrap();
-
                 if conf.hide_on_blur {
                     window.on_window_event(move |e| match e {
                         WindowEvent::Focused(b) => {
                             if !b {
+                                save_pos(&w_on_ev);
                                 w_on_ev.hide().unwrap();
-                                let pos = w_on_ev.outer_position().unwrap();
-                                w_on_ev.set_position(pos).unwrap();
                             }
                         }
                         _ => (),
                     });
                 }
                 app.global_shortcut_manager()
-                    .clone()
                     .register("ctrl+alt+c", move || {
-                        w_on_shortcut.show().unwrap();
-                        w_on_shortcut.set_focus().unwrap();
-                        w_on_shortcut.set_always_on_top(true).unwrap();
+                        if w_on_shortcut.is_visible().unwrap() {
+                            save_pos(&w_on_shortcut);
+                            w_on_shortcut.hide().unwrap()
+                        } else {
+                            w_on_shortcut.set_always_on_top(true).unwrap();
+                            restore_pos(&w_on_shortcut);
+                            w_on_shortcut.show().unwrap();
+                        }
+                        // w_on_shortcut.set_focus().unwrap();
+                        // w_on_shortcut.set_always_on_top(true).unwrap();
                     })
                     .unwrap();
 
                 let state: tauri::State<OffdictState> = app.state();
-
                 let v = state.0.clone();
+                unsafe {
+                    state_ = Some(state.0.clone());
+                }
+
                 let mut db = v.db.write().unwrap();
 
                 let db_path = PathBuf::from(conf.data_path.clone());

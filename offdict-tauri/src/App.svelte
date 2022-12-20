@@ -22,6 +22,7 @@
   let qucik_res = [];
   let currentWord = undefined;
   let currentIndex = -1;
+  let inputheader = false;
   let inputWord;
   let def_list = []; // Final list of defs
   let show_not_found = true;
@@ -60,6 +61,24 @@
       });
   }
 
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight") {
+      navNextDef();
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    if (e.key === "ArrowLeft") {
+      navNextDef(true);
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    document.querySelector("input.form-input")?.focus();
+  });
+
+  listen("def_list", (e) => {
+    def_list = e.payload as [any];
+  });
+
   async function onInput() {
     // candidates = ;
     let qucik_res: [any] = await invoke("defs", {
@@ -76,7 +95,7 @@
       // show();
     } else {
       // show loading status
-      
+
       let fuzzy_res: [any] = await invoke("defs", {
         query: inputWord,
         fuzzy: true,
@@ -92,7 +111,7 @@
     // });
   }
 
-  function navNextDef(goPrev) {
+  function navNextDef(goPrev = false) {
     // let arr = Array.from(window.viewlist)
     //   .filter((x) => x[1]?.inView)
     //   .sort(
@@ -143,112 +162,113 @@
 </script>
 
 <main>
-  <div class="first">
-    <div class="input-group">
-      <input
-        type="text"
-        class="form-input"
-        placeholder={currentWord}
-        bind:value={inputWord}
-        on:input={(e) => {
-          show_not_found = false;
-          onInput();
-        }}
-        on:keydown={(e) => {
-          // dropdown = true;
-          if (e.key === "ArrowDown") {
-            if (dropdown)
-              document.querySelector(".first .menu-item").firstChild.focus();
-            else if (qucik_res[currentIndex + 1]) {
-              currentWord = qucik_res[++currentIndex];
-              show();
-            }
-            e.stopPropagation();
-            e.preventDefault();
-          }
-          if (e.key === "ArrowUp") {
-            if (dropdown)
-              document.querySelector(".first .menu-item").firstChild.focus();
-            else if (qucik_res[currentIndex - 1]) {
-              currentWord = qucik_res[--currentIndex];
-              show();
-            }
-            e.stopPropagation();
-            e.preventDefault();
-          }
-          if (e.key === "Enter") {
-            if (dropdown)
-              document.querySelector(".first .menu-item").firstChild.click();
-            console.log(def_list);
-            e.stopPropagation();
-            e.preventDefault();
-          }
-          if (e.key === "ArrowRight") {
-            navNextDef();
-            e.stopPropagation();
-            e.preventDefault();
-          }
-          if (e.key === "ArrowLeft") {
-            navNextDef(true);
-            e.stopPropagation();
-            e.preventDefault();
-          }
-        }}
-        on:focus={() => {
-          // dropdown = true;
-          //
-        }}
-        on:click={(e) => {
-          e.stopPropagation();
-          e.preventDefault();
-        }}
-      />
-      <button
-        class="btn btn-secondary input-group-btn"
-        on:click={(e) => invoke("import")}>import</button
-      >
-    </div>
-    {#if dropdown}
-      <!-- <ul class="menu" transition:slide={{ duration: 5, easing: sineInOut }}> -->
-      <ul class="menu">
-        <!-- menu header text -->
-        <li class="divider" data-content="Local" />
-        <!-- menu item standard -->
-        {#each candidates as candi (candi.id)}
-          <!-- svelte-ignore a11y-no-noninteractive-tabindex -->
-          <li
-            class="menu-item"
-            on:click={() => {
-              dropdown = false;
-              currentWord = candi.word;
-              inputWord = currentWord;
-              show();
-            }}
-            tabindex={candi.id}
-            on:keydown={(e) => {
-              if (e.key === "ArrowDown") {
-                e.target.parentElement?.nextSibling?.firstChild?.focus();
-                e.stopPropagation();
-                e.preventDefault();
+  {#if inputheader}
+    <div class="first">
+      <div class="input-group">
+        <input
+          type="text"
+          class="form-input"
+          placeholder={currentWord}
+          bind:value={inputWord}
+          on:input={(e) => {
+            show_not_found = false;
+            onInput();
+          }}
+          on:keydown={(e) => {
+            // dropdown = true;
+            if (e.key === "ArrowDown") {
+              if (dropdown)
+                document.querySelector(".first .menu-item").firstChild.focus();
+              else if (qucik_res[currentIndex + 1]) {
+                currentWord = qucik_res[++currentIndex];
+                show();
               }
-              if (e.key === "ArrowUp") {
-                e.target.parentElement?.previousSibling?.firstChild?.focus();
-                e.stopPropagation();
-                e.preventDefault();
+              e.stopPropagation();
+              e.preventDefault();
+            }
+            if (e.key === "ArrowUp") {
+              if (dropdown)
+                document.querySelector(".first .menu-item").firstChild.focus();
+              else if (qucik_res[currentIndex - 1]) {
+                currentWord = qucik_res[--currentIndex];
+                show();
               }
-            }}
-          >
-            <a href="#">
-              <i class="icon icon-link" />
-              {candi.word}
-            </a>
-          </li>
-        {/each}
-        <!-- menu item with form control -->
-        <!-- menu divider -->
-        <!-- <li class="divider" /> -->
-        <!-- menu item with badge -->
-        <!-- <li class="menu-item">
+              e.stopPropagation();
+              e.preventDefault();
+            }
+            if (e.key === "Enter") {
+              if (dropdown)
+                document.querySelector(".first .menu-item").firstChild.click();
+              console.log(def_list);
+              e.stopPropagation();
+              e.preventDefault();
+            }
+            // if (e.key === "ArrowRight") {
+            //   navNextDef();
+            //   e.stopPropagation();
+            //   e.preventDefault();
+            // }
+            // if (e.key === "ArrowLeft") {
+            //   navNextDef(true);
+            //   e.stopPropagation();
+            //   e.preventDefault();
+            // }
+          }}
+          on:focus={() => {
+            // dropdown = true;
+            //
+          }}
+          on:click={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+          }}
+        />
+        <button
+          class="btn btn-secondary input-group-btn"
+          on:click={(e) => invoke("import")}>import</button
+        >
+      </div>
+      {#if dropdown}
+        <!-- <ul class="menu" transition:slide={{ duration: 5, easing: sineInOut }}> -->
+        <ul class="menu">
+          <!-- menu header text -->
+          <li class="divider" data-content="Local" />
+          <!-- menu item standard -->
+          {#each candidates as candi (candi.id)}
+            <!-- svelte-ignore a11y-no-noninteractive-tabindex -->
+            <li
+              class="menu-item"
+              on:click={() => {
+                dropdown = false;
+                currentWord = candi.word;
+                inputWord = currentWord;
+                show();
+              }}
+              tabindex={candi.id}
+              on:keydown={(e) => {
+                if (e.key === "ArrowDown") {
+                  e.target.parentElement?.nextSibling?.firstChild?.focus();
+                  e.stopPropagation();
+                  e.preventDefault();
+                }
+                if (e.key === "ArrowUp") {
+                  e.target.parentElement?.previousSibling?.firstChild?.focus();
+                  e.stopPropagation();
+                  e.preventDefault();
+                }
+              }}
+            >
+              <a href="#">
+                <i class="icon icon-link" />
+                {candi.word}
+              </a>
+            </li>
+          {/each}
+          <!-- menu item with form control -->
+          <!-- menu divider -->
+          <!-- <li class="divider" /> -->
+          <!-- menu item with badge -->
+          <!-- <li class="menu-item">
           <a href="#">
             <i class="icon icon-link" /> Settings
           </a>
@@ -256,9 +276,10 @@
             <label class="label label-primary">2</label>
           </div>
         </li> -->
-      </ul>
-    {/if}
-  </div>
+        </ul>
+      {/if}
+    </div>
+  {/if}
 
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <div
@@ -269,7 +290,9 @@
   >
     {#each def_list as def}
       <div
-        class="card {def.in ? 'glow' : ''}"
+        class="card {def.in ? 'glow' : ''} {inputheader
+          ? 'enable-inputheader'
+          : ''}"
         bind:this={def.card}
         use:inview={{}}
         on:change={(event) => {
@@ -360,12 +383,16 @@
   .card {
     margin: 10px;
     margin-left: 8px;
+    border: none;
   }
   .menu {
     margin-top: 5px;
     margin-bottom: 25px;
   }
   .card:first-child {
+    margin-top: 20px;
+  }
+  .card:first-child.enable-inputheader {
     margin-top: 75px;
   }
   :global(.svelte-tabs li.svelte-tabs__tab:focus) {

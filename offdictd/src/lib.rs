@@ -4,7 +4,6 @@ pub use serde::{Deserialize, Serialize};
 pub use serde_yaml::{self};
 pub use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-
 use std::collections::{BTreeSet, HashMap};
 
 use std::iter::FromIterator;
@@ -30,10 +29,10 @@ extern crate tantivy;
 
 use std::cmp::Ordering::Equal;
 use tantivy::collector::{Count, TopDocs};
-use tantivy::query::{FuzzyTermQuery, QueryParser, RegexQuery, TermQuery};
-use tantivy::schema::{*};
+use tantivy::query::{AllQuery, FuzzyTermQuery, QueryParser, RegexQuery, TermQuery};
+use tantivy::schema::*;
+use tantivy::IndexReader;
 use tantivy::{DocAddress, Index, IndexWriter};
-use tantivy::{IndexReader};
 
 use debug_print::debug_println;
 
@@ -105,44 +104,54 @@ impl offdict {
     pub fn candidates(&self, query: &str, top: usize, fuzzy: bool) -> candidates {
         let searcher = self.reader.searcher();
         let word = self.schema.get_field("word").unwrap();
-        if fuzzy {
-            let term = Term::from_field_text(word, query);
-            let term_query = FuzzyTermQuery::new_prefix(term, 2, true);
-            let (top_docs, count) = searcher
-                .search(&term_query, &(TopDocs::with_limit(top), Count))
+        if query.is_empty() {
+            let (top_docs_t) = searcher
+                .search(&AllQuery {}, &(TopDocs::with_limit(top)))
                 .unwrap();
 
-            top_docs
+            top_docs_t
         } else {
-            let term = Term::from_field_text(word, query);
-            let term_query = TermQuery::new(term, IndexRecordOption::Basic);
-            let (top_docs_t, count) = searcher
-                .search(&term_query, &(TopDocs::with_limit(top), Count))
-                .unwrap();
-            debug_println!("TermQuery {}, count {}", query, count);
-            if count >= top {
-                top_docs_t
+            if fuzzy {
+                let term = Term::from_field_text(word, query);
+                let term_query = FuzzyTermQuery::new_prefix(term, 2, true);
+                let (top_docs) = searcher
+                    .search(&term_query, &(TopDocs::with_limit(top)))
+                    .unwrap();
+                debug_println!("FuzzyTermQuery {}", query);
+
+                top_docs
             } else {
-                let q = query.to_owned() + ".*"; // regex seems to have poor scoring
-                let term_query = RegexQuery::from_pattern(&q, word).unwrap();
-                let (top_docs_r, count) = searcher
+                let term = Term::from_field_text(word, query);
+                let term_query = TermQuery::new(term, IndexRecordOption::Basic);
+                let (top_docs_t, count) = searcher
                     .search(&term_query, &(TopDocs::with_limit(top), Count))
                     .unwrap();
+                debug_println!("TermQuery {}, count {}", query, count);
+                if count >= top {
+                    top_docs_t
+                } else {
+                    let q = regex::escape(query) + ".*"; // regex seems to have poor scoring
 
-                debug_println!("RegexQuery {}, count {}", query, count);
-                // the larger the more relevant
+                    let term_query = RegexQuery::from_pattern(&q, word).unwrap();
+                    let (top_docs_r) = searcher
+                        .search(&term_query, &(TopDocs::with_limit(top)))
+                        .unwrap();
 
-                let mut set: HashMap<DocAddress, f32> =
-                    HashMap::from_iter(top_docs_r.into_iter().map(|(a, b)| (b, a)));
-                top_docs_t.into_iter().for_each(|(s, d)| {
-                    set.insert(d, s);
-                });
+                    debug_println!("RegexQuery {}", query);
+                    // the larger the more relevant
 
-                let mut v: candidates = set.into_iter().map(|(a, b)| (b, a)).collect();
-                v.sort_by(|(a, _), (b, _)| b.partial_cmp(a).unwrap_or(Equal));
+                    let mut set: HashMap<DocAddress, f32> =
+                        HashMap::from_iter(top_docs_r.into_iter().map(|(a, b)| (b, a)));
+                    top_docs_t.into_iter().for_each(|(s, d)| {
+                        set.insert(d, s);
+                    });
 
-                dbg!(&v);
-                v
+                    let mut v: candidates = set.into_iter().map(|(a, b)| (b, a)).collect();
+                    v.sort_by(|(a, _), (b, _)| b.partial_cmp(a).unwrap_or(Equal));
+
+                    dbg!(&v);
+                    v
+                }
             }
         }
     }
