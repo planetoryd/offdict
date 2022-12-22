@@ -96,14 +96,14 @@ fn defs<'a>(
     state: tauri::State<'a, OffdictState>,
     query: &'a str,
     fuzzy: bool,
-) -> Result<Vec<DefItem>, &'static str> {
+) -> Result<Vec<Def>, &'static str> {
     // let state_guard = state.0.read().unwrap();
     let db_ = state.0.db.read();
     let db = db_.as_ref().unwrap().as_ref().unwrap();
 
     let d = db.search(query, 5, fuzzy);
 
-    Ok(offdictd::flatten(d))
+    Ok(offdictd::flatten_human(d))
 }
 
 #[tauri::command]
@@ -241,14 +241,14 @@ fn onInput(s: &str) {
     let db = db_.as_ref().unwrap().as_ref().unwrap();
 
     let mut d = db.search(s, 5, false);
-    let mut def_list = offdictd::flatten(d);
+    let mut def_list = offdictd::flatten_human(d);
     unsafe {
         w.as_ref().unwrap().emit("set_input", s).unwrap();
     }
 
     if def_list.is_empty() {
         d = db.search(s, 5, true);
-        def_list = offdictd::flatten(d);
+        def_list = offdictd::flatten_human(d);
         unsafe {
             w.as_ref().unwrap().emit("def_list", &def_list).unwrap();
         }

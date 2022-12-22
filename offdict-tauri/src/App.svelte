@@ -419,10 +419,13 @@
   :global(.svelte-tabs li.svelte-tabs__tab:focus) {
     outline: none;
   }
-  :global(.svelte-tabs__selected) {
+  :global(li.svelte-tabs__selected) {
     border-bottom: 0 solid rgba(128, 128, 128, 0.514) !important;
-    background: rgba(0, 119, 255, 0.281);
-    color: rgba(0, 0, 0, 0.842) !important;
+    background: rgba(9, 78, 158, 0.547) !important;
+    color: rgba(255, 255, 255, 1) !important;
+    &:hover {
+      color: rgba(255, 253, 253, 0.76) !important;
+    }
   }
   :global(.svelte-tabs__tab) {
     background: rgba(0, 101, 160, 0.062);
@@ -435,7 +438,7 @@
     border-radius: 2px;
   }
   :global(.svelte-tabs__tab:hover) {
-    color: rgba(39, 98, 167, 0.836) !important;
+    color: rgba(40, 78, 148, 0.801) !important;
   }
   :global(.svelte-tabs__tab-list) {
     border-bottom: 0 !important;

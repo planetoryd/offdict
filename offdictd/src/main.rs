@@ -211,7 +211,7 @@ fn respond(line: &str, db: &offdict) -> Result<bool, String> {
 
 fn api_q(db: &offdict, query: &str) -> Map<String, Vec<Def>> {
     println!("\nq: {}", query);
-    let arr = db.search(&query, 5, true);
+    let arr = db.search(&query, 30, true);
     let mut m = Map::new();
     for wr in arr {
         m.insert(wr.word.clone(), wr.vec_human());

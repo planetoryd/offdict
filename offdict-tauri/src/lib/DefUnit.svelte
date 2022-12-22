@@ -117,10 +117,11 @@
     border-radius: 5px;
   }
   .def_basic {
-    background: #d4d4d42a;
+    background: rgba(165, 165, 165, 0.199);
     padding: 5px;
     border-radius: 5px;
   }
+
   .info {
     color: #868e96;
     border-radius: 5px;
@@ -133,10 +134,11 @@
   }
 
   span {
-    display: inline-block;
+    display: inline;
   }
   .chip {
-    background: rgba(0, 54, 116, 0.452);
+    background: rgba(0, 54, 116, 0.352);
+    margin-top: 4px;
     color: white;
   }
 </style>

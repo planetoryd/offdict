@@ -153,7 +153,7 @@ impl offdict {
             if res.is_ok() {
                 let (k, v) = res.unwrap();
                 items.insert(
-                    String::from_utf8(DBKey::slice(&k).0.to_vec()).unwrap(),
+                    String::from_utf8(DBKey::slice(&k).1.to_vec()).unwrap(),
                     Self::deserialize(&v).unwrap(),
                 );
             }
@@ -175,6 +175,7 @@ impl offdict {
             res.push(self.retrieve(s).unwrap());
             // debug_println!("{}", self.schema.to_json(&retrieved_doc));
         }
+
         res
     }
 
@@ -432,6 +433,14 @@ pub fn flatten(wr: Vec<DefItemWrapped>) -> Vec<DefItem> {
         }
     }
 
+    res
+}
+
+pub fn flatten_human(wr: Vec<DefItemWrapped>) -> Vec<Def> {
+    let mut res = Vec::new();
+    for wrapper in wr.into_iter() {
+        res.extend(wrapper.vec_human())
+    }
     res
 }
 
