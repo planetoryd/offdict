@@ -18,9 +18,7 @@
       "args": [
         "yaml",
         "-p",
-        "/hdd/OpenMdicts/dict.yaml",
-        "-n",
-        "dict"
+        "/hdd/OpenMdicts/21世紀電腦英漢漢英雙向辭典.*.yaml",
       ],
       "cwd": "${workspaceFolder}/offdictd"
     },

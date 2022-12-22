@@ -21,12 +21,18 @@
     // else window.viewlist.delete(node)
   }}
 >
-  {#if def.CN}
-    <div class="CN">{def.CN}</div>
-  {/if}
-  {#if def.EN}
-    <div class="EN">{def.EN}</div>
-  {/if}
+  <div class="def_basic">
+    {#if def.type}
+      <span class="chip">{def.type}</span>
+    {/if}
+    {#if def.CN}
+      <span class="CN">{def.CN}</span>
+    {/if}
+    {#if def.EN}
+      <div class="EN">{def.EN}</div>
+    {/if}
+  </div>
+
   {#if def.examples}
     {#each def.examples as ex}
       {#if ex}
@@ -43,9 +49,6 @@
         </div>
       {/if}
     {/each}
-  {/if}
-  {#if def.type}
-    <div class="chip">{def.type}</div>
   {/if}
   {#if def.info}
     <div class="info">{def.info}</div>
@@ -96,12 +99,11 @@
       color: #868e96;
     }
   }
-
   .CN,
   .EN,
   .titl {
-    color: #f1f3f5;
-    background: #868e96ce;
+    color: #000000d3;
+    // background: rgba(255, 255, 255, 0.953);
     padding: 4px;
     // border-radius: 2px;
     margin-top: 5px;
@@ -110,6 +112,11 @@
     padding-right: 10px;
     padding-top: 5px;
     padding-bottom: 5px;
+    border-radius: 5px;
+  }
+  .def_basic{
+    background: #d4d4d42a;
+    padding: 5px;
     border-radius: 5px;
   }
   .info {

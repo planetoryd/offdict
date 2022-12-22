@@ -16,6 +16,8 @@ use warp::Filter;
 use config::{Config, File, FileFormat, Map};
 use offdictd::{def_bin::WrapperDef, *};
 
+use glob;
+
 #[derive(Debug, Deserialize)]
 struct OffdictConfig {
     data_path: String,
@@ -39,8 +41,6 @@ enum Commands {
     yaml {
         #[arg(short = 'p', required = true)]
         path: String,
-        #[arg(short = 'n', long)]
-        name: Option<String>, // Name to be displayed
         #[arg(short = 'c', long)]
         check: bool,
         #[arg(short = 's', long)]
@@ -62,6 +62,8 @@ enum Commands {
     //     name: String, // Name to be displayed
     // },
     reset {},
+    #[command(about = "Build index, required after adding or removing words")]
+    build {},
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -81,41 +83,30 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let db = Arc::new(RwLock::new(offdict::open_db(db_path.to_owned())));
 
-    let mut yaml_defs: Vec<Def> = vec![];
-
     println!("config: {:?}", &conf);
     let _db_a = db.clone();
     {
         let mut db_w = db.write().unwrap();
         match args.command {
-            Some(Commands::yaml {
-                path,
-                name,
-                check,
-                save,
-            }) => {
+            Some(Commands::yaml { path, check, save }) => {
                 if check {
-                    Def::check_yaml(&path, save);
-                    return Ok(());
-                }
-                let pa = PathBuf::from(&path);
-                let s = pa.file_stem().unwrap().to_str().unwrap().split_once(".");
-                let name1;
+                    let options = glob::MatchOptions {
+                        case_sensitive: false,
+                        ..Default::default()
+                    };
 
-                if name.is_none() {
-                    if s.is_none() {
-                        println!("provide a name");
-                        return Ok(());
-                    } else {
-                        name1 = name.unwrap_or(s.unwrap().0.to_owned());
+                    for entry in glob::glob_with(&path, options)? {
+                        let entr = entry?;
+                        println!("checking {}", entr.to_str().unwrap());
+                        Def::check_yaml(entr.to_str().unwrap(), save);
                     }
-                } else {
-                    name1 = name.unwrap()
-                }
 
-                match db_w.import_from_file(&path, &name1) {
-                    Ok(()) => println!("imported"),
-                    Err(e) => println!("{:?}", e),
+                    return Ok(());
+                } else {
+                    match db_w.import_glob(&path) {
+                        Ok(()) => println!("imported"),
+                        Err(e) => println!("{:?}", e),
+                    }
                 }
             }
             Some(Commands::stat {}) => {
@@ -131,6 +122,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             Some(Commands::reset {}) => {
                 db_w.reset_db();
                 println!("reset.");
+            }
+            Some(Commands::build {}) => {
+                let c = db_w.build_fst_from_db();
+                println!("built, {} words", c);
             }
             None => {}
         };
@@ -200,9 +195,10 @@ async fn repl(db_: Arc<RwLock<offdict>>) {
 }
 
 fn respond(line: &str, db: &offdict) -> Result<bool, String> {
-    let arr = db.search(line, 1, true);
+    let mut arr = db.search(line, 2, true);
 
     println!("{} results", arr.len());
+    arr.truncate(2);
     for d in arr.into_iter() {
         println!(
             "{}",

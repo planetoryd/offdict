@@ -2,7 +2,7 @@ pub use serde::{Deserialize, Serialize};
 pub use serde_yaml::{self};
 pub use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use std::collections::{BTreeMap};
+use std::collections::BTreeMap;
 use std::iter::FromIterator;
 use std::mem::transmute;
 use std::{self};
@@ -15,7 +15,7 @@ pub use std::error::Error;
 pub use std::fs::File;
 pub use std::io::{Read, Write};
 
-
+use crate::def;
 
 #[allow(non_camel_case_types)]
 #[allow(non_snake_case)]
@@ -41,45 +41,36 @@ pub struct Def {
     pub related: Option<Vec<String>>,
     pub dictName: Option<String>,
 }
-
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
-pub enum example {
-    obj(example_obj),
-    str(String),
-    #[default]
-    none,
-}
-
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
-pub enum pronunciation {
+#[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Default)]
+pub enum shorthand<O> {
+    obj(O),
     vec(Vec<Option<String>>),
     str(String),
     #[default]
     none,
 }
 
+#[allow(non_camel_case_types)]
+pub type example = shorthand<example_obj>;
+
+#[allow(non_camel_case_types)]
+pub type pronunciation = shorthand<String>;
+
 #[allow(non_snake_case)]
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
+#[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct example_obj {
     CN: Option<String>,
     EN: Option<String>,
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
-pub enum tip {
-    obj(tip_obj),
-    str(String),
-    vec_str(Vec<String>),
-    #[default]
-    none,
-}
+pub type tip = shorthand<tip_obj>;
+
 #[allow(non_snake_case)]
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
+#[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct tip_obj {
     CN: Option<String>,
     EN: Option<String>,
@@ -99,7 +90,7 @@ impl From<Def> for super::Def {
 
 #[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
 pub struct WrapperDef {
-    pub items: BTreeMap<String, Def>,
+    pub items: BTreeMap<String, Def>, // dictname to def
     pub word: String,
 }
 
@@ -110,7 +101,6 @@ impl From<Def> for WrapperDef {
             items: BTreeMap::from_iter([(value.dictName.clone().unwrap(), value)]),
         }
     }
-
 }
 
 impl WrapperDef {
@@ -119,6 +109,51 @@ impl WrapperDef {
         self
     }
     pub fn vec_human(self) -> Vec<super::Def> {
-        self.items.into_values().into_iter().map(|x| x.into()).collect()
+        self.items
+            .into_values()
+            .into_iter()
+            .map(|x| x.into())
+            .collect()
     }
+}
+
+#[test]
+fn test_wrapper() {
+    let d: def::Def =serde_yaml::from_str("
+    definitions:
+    - {}
+    - EN: If there is a certain amount of something left, or if you have a certain amount of it left, it remains when the rest has gone or been used.
+      info: 【搭配模式】：v-link ADJ 【搭配模式】：usu v-link PHR
+      type: \"ADJ\t形容词\"
+      CN: 剩余的；剩下的；余下的
+      examples:
+      - CN: 还有杜松子酒吗？
+        EN: Is there any gin left?...
+      - CN: 他还剩有大把的钱。
+        EN: He's got plenty of money left...
+      - CN: 他们还剩6场比赛要打。
+        EN: They still have six games left to play.
+      - CN: ', or if you have it'
+        EN: left over
+    index: 17775
+    word: left
+    dictName: wikibedia
+    ").unwrap();
+    let d2: Def = serde_yaml::from_str("
+    definitions:
+    - {}
+    - EN: If there is a certain amount of something left, or if you have a certain amount of it left, it remains when the rest has gone or been used.
+      info: 【搭配模式】：v-link ADJ 【搭配模式】：usu v-link PHR
+      type: \"ADJ\t形容词\"
+      CN: 剩余的；剩下的；余下的
+    word: left
+    dictName: wikipedia
+    ").unwrap();
+    let dbin: Def = d.into();
+    let d2bin: Def = d2.into();
+    let mut dw: WrapperDef = dbin.into();
+    let dw2: WrapperDef = d2bin.into();
+    let m = dw2.merge(&mut dw);
+    dbg!(&m);
+    dbg!(m.vec_human());
 }

@@ -9,7 +9,7 @@ const FIXTURE_PATH: &'static str = "./fixtures/dict.yaml";
 
 use crate::{def, def_bin, Def};
 use bincode::Options;
-use postcard;
+// use postcard;
 use std::fs::File;
 use std::ops::Deref;
 
@@ -37,18 +37,18 @@ fn test_bincode<T: for<'a> Deserialize<'a> + Serialize + Debug + PartialEq>(valu
     assert_eq!(value, value_d);
 }
 
-fn test_postcard<T: for<'a> Deserialize<'a> + Serialize + Debug + PartialEq>(value: T) {
-    let value_bytes: _ = postcard::to_vec::<T, 64>(&value).unwrap(); // buffer full
+// fn test_postcard<T: for<'a> Deserialize<'a> + Serialize + Debug + PartialEq>(value: T) {
+//     let value_bytes: _ = postcard::to_vec::<T, 64>(&value).unwrap(); // buffer full
 
-    println!(
-        "{:?} {}",
-        &value_bytes[..cmp::min(value_bytes.len(), 20)],
-        value_bytes.len()
-    );
+//     println!(
+//         "{:?} {}",
+//         &value_bytes[..cmp::min(value_bytes.len(), 20)],
+//         value_bytes.len()
+//     );
 
-    let value_d: T = postcard::from_bytes(value_bytes.deref()).unwrap();
-    assert_eq!(value, value_d);
-}
+//     let value_d: T = postcard::from_bytes(value_bytes.deref()).unwrap();
+//     assert_eq!(value, value_d);
+// }
 
 #[test]
 #[should_panic]// The original struct is too weird ...
@@ -65,17 +65,17 @@ fn bincode_def() {
     test_bincode(value);
 }
 
-#[test]
-fn postcard_def() {
-    let value: def_bin::Def = def_bin::Def::default();
+// #[test]
+// fn postcard_def() {
+//     let value: def_bin::Def = def_bin::Def::default();
 
-    test_postcard(value);
-    test_postcard(def_bin::Def {
-        word: Some("bincode".to_owned()),
-        dictName: Some("bincode".to_owned()),
-        ..Default::default()
-    });
-}
+//     test_postcard(value);
+//     test_postcard(def_bin::Def {
+//         word: Some("bincode".to_owned()),
+//         dictName: Some("bincode".to_owned()),
+//         ..Default::default()
+//     });
+// }
 
 #[test]
 fn editable_formats() {

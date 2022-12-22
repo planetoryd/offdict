@@ -381,9 +381,10 @@
     padding: 0;
   }
   .card {
-    margin: 10px;
+    margin: 0px;
     margin-left: 8px;
     border: none;
+    padding-top: 0;
   }
   .menu {
     margin-top: 5px;
@@ -401,5 +402,11 @@
 
   .card-footer {
     color: lightgrey;
+    padding-top: 0;
+    padding-bottom: 0;
+    font-size: small;
+  }
+  .card-header {
+    padding-top: 0;
   }
 </style>
