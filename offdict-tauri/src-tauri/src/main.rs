@@ -9,8 +9,8 @@ use offdictd::{self, def_bin::WrapperDef, *};
 use rust_stemmers::{Algorithm, Stemmer};
 use std::{borrow::Cow, env, fs, path::PathBuf, sync::Arc, sync::RwLock, thread};
 use tauri::{
-    self, api::dialog, ClipboardManager, GlobalShortcutManager, Manager, PhysicalPosition, Window,
-    WindowEvent, utils::debug_eprintln,
+    self, api::dialog, utils::debug_eprintln, ClipboardManager, GlobalShortcutManager, Manager,
+    PhysicalPosition, Window, WindowEvent,
 };
 use timed::timed;
 
@@ -226,7 +226,7 @@ fn input_header() -> HeaderBar {
         onInput(e.text().as_str());
     });
     bo.pack_end(&btn, false, false, 0);
-    btn.connect_clicked(|b|{
+    btn.connect_clicked(|b| {
         println!("import btn");
     });
     header.set_custom_title(Some(&bo));
@@ -242,6 +242,10 @@ fn onInput(s: &str) {
 
     let mut d = db.search(s, 5, false);
     let mut def_list = offdictd::flatten(d);
+    unsafe {
+        w.as_ref().unwrap().emit("set_input", s).unwrap();
+    }
+
     if def_list.is_empty() {
         d = db.search(s, 5, true);
         def_list = offdictd::flatten(d);

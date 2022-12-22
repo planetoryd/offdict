@@ -2,6 +2,7 @@
 
 use fst::SetBuilder;
 pub use serde::{Deserialize, Serialize};
+
 pub use serde_yaml::{self};
 
 pub use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -31,13 +32,14 @@ use timed::timed;
 use debug_print::debug_println;
 use std::cmp::Ordering::Equal;
 
-use jammdb;
+use def_bin::DBKey;
 use memmap2::Mmap;
+use rocksdb::{BlockBasedOptions, Options, ReadOptions, SliceTransform, DB as rocks};
 use serde_ignored;
 
-pub type DefItemInDB = def_bin::WrapperDef;
+pub type DefItemWrapped = def_bin::WrapperDef;
 pub type DefItem = def_bin::Def;
-pub type DB = jammdb::DB;
+pub type DB = rocks;
 
 pub struct stat {
     pub words: usize,
@@ -46,10 +48,13 @@ pub struct stat {
 pub type candidate = String;
 pub type candidates = Vec<candidate>;
 pub struct offdict {
-    db: jammdb::DB,
+    db: rocks,
     fst_set: Option<fst::Set<Mmap>>,
     data_path: PathBuf,
 }
+
+#[test]
+pub fn rocks() {}
 
 #[test]
 pub fn test_guess_name() {
@@ -101,7 +106,15 @@ impl offdict {
         }
         pp.push("dicts.db");
         let n = pp.to_str().unwrap();
-        db = jammdb::DB::open(n).unwrap();
+
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.set_prefix_extractor(SliceTransform::create("pre", |bs| DBKey::slice(bs).0, None));
+        let mut tableopts = BlockBasedOptions::default();
+        tableopts.set_index_type(rocksdb::BlockBasedIndexType::HashSearch);
+        opts.set_block_based_table_factory(&tableopts);
+
+        db = rocks::open(&opts, n).unwrap();
         pp.pop();
         pp.push("fst");
 
@@ -121,11 +134,7 @@ impl offdict {
     }
 
     pub fn reset_db(&mut self) {
-        let t = self.db.tx(true).unwrap();
-        for b in t.buckets() {
-            t.delete_bucket(b.0.name()).unwrap();
-        }
-        t.commit().unwrap();
+        self.db.drop_cf("default").unwrap();
     }
 
     #[timed]
@@ -138,33 +147,29 @@ impl offdict {
     }
 
     #[timed]
-    pub fn retrieve(&self, cand: candidate) -> Option<DefItemInDB> {
-        let t = self.db.tx(false).unwrap();
-        let b = t.get_bucket(cand.as_bytes());
-        if b.is_ok() {
-            let b = b.unwrap();
-            let r = def_bin::WrapperDef {
-                items: BTreeMap::from_iter(b.kv_pairs().map(|x| {
-                    (
-                        String::from_utf8(x.key().to_vec()).unwrap(),
-                        Self::deserialize(x.value()).unwrap(),
-                    )
-                })),
-                word: cand,
-            };
-
-            Some(r)
+    pub fn retrieve(&self, cand: candidate) -> Option<DefItemWrapped> {
+        let mut items: BTreeMap<String, def_bin::Def> = BTreeMap::new();
+        for res in self.db.prefix_iterator(DBKey::from(cand.as_str(), "")) {
+            if res.is_ok() {
+                let (k, v) = res.unwrap();
+                items.insert(
+                    String::from_utf8(DBKey::slice(&k).0.to_vec()).unwrap(),
+                    Self::deserialize(&v).unwrap(),
+                );
+            }
+        }
+        if items.len() > 0 {
+            Some(def_bin::WrapperDef { items, word: cand })
         } else {
             None
         }
     }
 
     #[timed]
-    pub fn search(&self, query: &str, num: usize, fuzzy: bool) -> Vec<DefItemInDB> {
+    pub fn search(&self, query: &str, num: usize, fuzzy: bool) -> Vec<DefItemWrapped> {
         let mut cands = self.candidates(query, 2, fuzzy);
         cands.truncate(num);
-        let mut res: Vec<DefItemInDB> = vec![];
-        let t = self.db.tx(false).unwrap();
+        let mut res: Vec<DefItemWrapped> = vec![];
 
         for s in cands {
             res.push(self.retrieve(s).unwrap());
@@ -177,14 +182,13 @@ impl offdict {
         let file = File::create(path).expect("Unable to open file");
         // let mut defs: Vec<DefItemInDB> = vec![];
         let mut flat: Vec<DefItem> = vec![];
-        let t = self.db.tx(false).unwrap();
-        for b in t.buckets() {
-            let bb = t.get_bucket(b.0.name()).unwrap();
-            for x in bb.kv_pairs() {
-                flat.push(Self::deserialize(x.value()).unwrap())
+        for r in self.db.iterator(rocksdb::IteratorMode::Start) {
+            if r.is_ok() {
+                let (k, v) = r.unwrap();
+                // let k: DBKey = Self::deserialize(&k).unwrap();
+                flat.push(Self::deserialize(&v).unwrap());
             }
         }
-        t.commit().unwrap();
 
         serde_yaml::to_writer(file, &flat).unwrap();
     }
@@ -226,31 +230,23 @@ impl offdict {
 
     #[timed]
     pub fn import_defs(&mut self, defs: Vec<DefItem>) -> Result<(), Box<dyn Error>> {
-        let ws: Vec<DefItemInDB> = defs.into_iter().map(|d| d.into()).collect();
+        let ws: Vec<DefItemWrapped> = defs.into_iter().map(|d| d.into()).collect();
         self.import_wrapped(ws);
         Ok(())
     }
 
-    pub fn import_wrapped(&mut self, wrapped: Vec<DefItemInDB>) {
-        let mut t = self.db.tx(true).unwrap();
-
+    pub fn import_wrapped(&mut self, wrapped: Vec<DefItemWrapped>) {
         for mut incoming_w in wrapped {
-            let b = t.get_or_create_bucket(incoming_w.word.as_bytes()).unwrap();
             for (k, v) in incoming_w.items {
-                let by = Self::serialize(&v).unwrap();
-                b.put(k, by).unwrap();
+                self.db.put(v.key(), Self::serialize(&v).unwrap()).unwrap();
             }
         }
-
-        t.commit().unwrap();
     }
 
     pub fn stat(&self) -> stat {
-        let t = self.db.tx(false).unwrap();
+        let t = self.db.iterator(rocksdb::IteratorMode::Start).count();
 
-        stat {
-            words: t.buckets().count(),
-        }
+        stat { words: t }
     }
 
     #[timed]
@@ -260,12 +256,23 @@ impl offdict {
         let mut w = BufWriter::new(File::create(&px).unwrap());
         let mut bu = SetBuilder::new(w).unwrap();
 
-        let t = self.db.tx(false).unwrap();
         let mut c = 0 as usize;
-        for b in t.buckets() {
-            bu.insert(b.0.name()).unwrap();
-            c += 1;
+        let mut set: BTreeSet<String> = BTreeSet::new();
+        for res in self.db.iterator(rocksdb::IteratorMode::Start) {
+            if res.is_ok() {
+                let (k, v) = res.unwrap();
+                let word = String::from_utf8(DBKey::slice(&k).0.to_vec()).unwrap();
+                set.insert(word);
+                c += 1;
+            }
         }
+
+        debug_println!("word set len {}", set.len());
+        let mut sorted: Vec<String> = set.into_iter().collect();
+        sorted.sort();
+        sorted.into_iter().for_each(|k| {
+            bu.insert(k).unwrap();
+        });
 
         bu.finish().unwrap();
         self.fst_set = Some(Self::load_fst(px));
@@ -417,7 +424,7 @@ pub trait AnyDef<'a, T: Deserialize<'a>> {
 
 // store in database as wrapped
 // unwrapped in sources
-pub fn flatten(wr: Vec<DefItemInDB>) -> Vec<DefItem> {
+pub fn flatten(wr: Vec<DefItemWrapped>) -> Vec<DefItem> {
     let mut res = Vec::new();
     for wrapper in wr.into_iter() {
         for (_, d) in wrapper.items.into_iter() {

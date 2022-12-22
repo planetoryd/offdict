@@ -21,17 +21,19 @@
     // else window.viewlist.delete(node)
   }}
 >
-  <div class="def_basic">
-    {#if def.type}
-      <span class="chip">{def.type}</span>
-    {/if}
-    {#if def.CN}
-      <span class="CN">{def.CN}</span>
-    {/if}
-    {#if def.EN}
-      <div class="EN">{def.EN}</div>
-    {/if}
-  </div>
+  {#if def.type || def.CN || def.EN}
+    <div class="def_basic">
+      {#if def.type}
+        <span class="chip">{def.type}</span>
+      {/if}
+      {#if def.CN}
+        <span class="CN">{def.CN}</span>
+      {/if}
+      {#if def.EN}
+        <div class="EN">{def.EN}</div>
+      {/if}
+    </div>
+  {/if}
 
   {#if def.examples}
     {#each def.examples as ex}
@@ -71,15 +73,15 @@
   <div class="unknown">
     {#if def.definitions}
       {#if def.title}
-        <div class="titl">{def.title}</div>
+        <span class="titl">{def.title}</span>
       {/if}
 
       {#each def.definitions as d}
         {#if d.CN}
-          <div class="CN">{d.CN}</div>
+          <span class="CN">{d.CN}</span>
         {/if}
         {#if d.EN}
-          <div class="EN">{d.EN}</div>
+          <span class="EN">{d.EN}</span>
         {/if}
       {/each}
     {/if}
@@ -114,7 +116,7 @@
     padding-bottom: 5px;
     border-radius: 5px;
   }
-  .def_basic{
+  .def_basic {
     background: #d4d4d42a;
     padding: 5px;
     border-radius: 5px;
@@ -128,5 +130,13 @@
   }
   .related {
     margin-top: 15px;
+  }
+
+  span {
+    display: inline-block;
+  }
+  .chip {
+    background: rgba(0, 54, 116, 0.452);
+    color: white;
   }
 </style>

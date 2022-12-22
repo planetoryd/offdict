@@ -25,13 +25,20 @@
   let inputheader = false;
   let inputWord;
   let def_list = []; // Final list of defs
-  let show_not_found = true;
+  let show_not_found = true; // clip input was supposed to show explicit error
+  let notfound = false;
+  let welcome = true;
 
   listen("error", (e) => {});
   listen("clip", (e) => {
     inputWord = e.payload;
     show_not_found = true;
+    welcome = false;
     onInput();
+  });
+  listen("set_input", (e) => {
+    welcome = false;
+    inputWord = e.payload;
   });
 
   listen("importing", (e) => {
@@ -54,6 +61,7 @@
     invoke("defs", { query: currentWord })
       .then((r) => {
         console.log(r);
+        welcome = false;
         def_list = r as [];
       })
       .catch((e) => {
@@ -77,6 +85,12 @@
 
   listen("def_list", (e) => {
     def_list = e.payload as [any];
+    welcome = false;
+    if (def_list.length === 0) {
+      notfound = true;
+    } else {
+      notfound = false;
+    }
   });
 
   async function onInput() {
@@ -102,8 +116,7 @@
       });
       def_list = fuzzy_res;
       console.log("fuzzy", fuzzy_res);
-      if (show_not_found)
-        toast.error("not found", { position: "bottom-center", duration: 800 });
+      notfound = true;
     }
     // console.log(candidates);
     // toast.success("Always at the bottom.", {
@@ -288,6 +301,13 @@
       dropdown = false;
     }}
   >
+    {#if welcome}
+      <div class="card welcome">type anything to start</div>
+    {/if}
+    {#if notfound}
+      <div class="card notfound">Not found - {inputWord}</div>
+    {/if}
+
     {#each def_list as def}
       <div
         class="card {def.in ? 'glow' : ''} {inputheader
@@ -399,14 +419,49 @@
   :global(.svelte-tabs li.svelte-tabs__tab:focus) {
     outline: none;
   }
+  :global(.svelte-tabs__selected) {
+    border-bottom: 0 solid rgba(128, 128, 128, 0.514) !important;
+    background: rgba(0, 119, 255, 0.281);
+    color: rgba(0, 0, 0, 0.842) !important;
+  }
+  :global(.svelte-tabs__tab) {
+    background: rgba(0, 101, 160, 0.062);
+    color: rgba(0, 0, 0, 0.925) !important;
+    margin: 2px;
+    margin-right: 8px;
+    margin-left: 0;
+    padding-top: 5px !important;
+    padding-bottom: 5px !important;
+    border-radius: 2px;
+  }
+  :global(.svelte-tabs__tab:hover) {
+    color: rgba(39, 98, 167, 0.836) !important;
+  }
+  :global(.svelte-tabs__tab-list) {
+    border-bottom: 0 !important;
+  }
 
   .card-footer {
     color: lightgrey;
     padding-top: 0;
     padding-bottom: 0;
-    font-size: small;
   }
   .card-header {
     padding-top: 0;
+  }
+  .notfound {
+    padding: 15px;
+    margin: 10px;
+    background: rgba(128, 128, 128, 0.075);
+  }
+  .welcome {
+    padding: 15px;
+    margin: 10px;
+    background: rgba(0, 119, 255, 0.158);
+  }
+  .card-body {
+    padding: 5px;
+    padding-left: 15px;
+    padding-right: 15px;
   }
 </style>

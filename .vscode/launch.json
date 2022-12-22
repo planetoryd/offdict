@@ -16,9 +16,8 @@
         }
       },
       "args": [
-        "yaml",
-        "-p",
-        "/hdd/OpenMdicts/21世紀電腦英漢漢英雙向辭典.*.yaml",
+        "lookup",
+        "a",
       ],
       "cwd": "${workspaceFolder}/offdictd"
     },

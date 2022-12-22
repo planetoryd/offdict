@@ -1,8 +1,10 @@
+use lazy_static::__Deref;
 pub use serde::{Deserialize, Serialize};
 pub use serde_yaml::{self};
 pub use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use std::collections::BTreeMap;
+use std::convert::TryInto;
 use std::iter::FromIterator;
 use std::mem::transmute;
 use std::{self};
@@ -16,6 +18,28 @@ pub use std::fs::File;
 pub use std::io::{Read, Write};
 
 use crate::def;
+
+pub mod DBKey {
+    pub fn slice(b: &[u8]) -> (&[u8], &[u8]) {
+        let c = &b[0..4];
+        let len: u32 = u32::from_be_bytes(c.try_into().unwrap());
+        (&b[4..(4 + len as usize)], &b[(4 + len as usize)..])
+    }
+    pub fn from(word: &str, dict: &str) -> Vec<u8> {
+        let mut v: Vec<u8> = vec![];
+        v.extend((word.len() as u32).to_be_bytes() as [u8; 4]);
+        v.extend(word.as_bytes());
+        v.extend(dict.as_bytes());
+        debug_assert!(v.len() > 4);
+        v
+    }
+}
+
+impl Def {
+    pub fn key(&self) -> Vec<u8> {
+        DBKey::from(self.word.as_ref().unwrap(), self.dictName.as_ref().unwrap())
+    }
+}
 
 #[allow(non_camel_case_types)]
 #[allow(non_snake_case)]
