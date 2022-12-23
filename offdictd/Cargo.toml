@@ -33,3 +33,4 @@ regex-automata = { version = "0.2.0", features = ["transducer"] }
 transducer = "0.1.0"
 memmap2 = "0.5.8"
 rocksdb = "0.19.0"
+bitmask-enum = "2.1.0"

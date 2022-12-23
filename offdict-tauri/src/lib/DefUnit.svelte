@@ -89,56 +89,84 @@
 </div>
 
 <style lang="scss">
-  .example {
-    margin-left: 20px;
-    margin-top: 5px;
-  }
-
-  .unknown {
-    .CN,
-    .EN {
-      background: white;
-      color: #868e96;
-    }
-  }
-  .CN,
-  .EN,
-  .titl {
-    color: #000000d3;
-    // background: rgba(255, 255, 255, 0.953);
-    padding: 4px;
-    // border-radius: 2px;
-    margin-top: 5px;
-    margin-bottom: 5px;
-    padding-left: 15px;
-    padding-right: 10px;
-    padding-top: 5px;
-    padding-bottom: 5px;
-    border-radius: 5px;
-  }
-  .def_basic {
-    background: rgba(165, 165, 165, 0.199);
-    padding: 5px;
-    border-radius: 5px;
-  }
-
-  .info {
-    color: #868e96;
-    border-radius: 5px;
-  }
   .explain {
     margin-bottom: 10px;
+    .example {
+      margin-left: 25px;
+      margin-top: 5px;
+    }
+    .info {
+      color: #78b89f;
+      border-radius: 5px;
+    }
+    .def_basic {
+      background: rgba(165, 165, 165, 0.199);
+      padding: 5px;
+      border-radius: 5px;
+    }
+    .unknown {
+      .CN,
+      .EN {
+        background: white;
+        color: #868e96;
+      }
+    }
+    .CN,
+    .EN,
+    .titl {
+      color: #000000d3;
+      // background: rgba(255, 255, 255, 0.953);
+      // padding: 4px;
+      // border-radius: 2px;
+      padding-top: 0;
+      padding-bottom: 0;
+      margin-top: 5px;
+      margin-bottom: 5px;
+      padding-left: 15px;
+      padding-right: 10px;
+      border-radius: 5px;
+    }
+    .related {
+      margin-top: 15px;
+    }
   }
-  .related {
-    margin-top: 15px;
-  }
-
   span {
     display: inline;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    white-space: pre-line;
+    overflow-wrap: break-word;
+    word-break: break-word;
   }
   .chip {
     background: rgba(0, 54, 116, 0.352);
     margin-top: 4px;
     color: white;
+    padding: 2px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  :global(body.dark .explain) {
+    $text: rgba(255, 255, 255, 0.966);
+    color: $text;
+    background: transparent;
+    span {
+      &.CN,
+      &.EN {
+        background: rgba(245, 245, 245, 0);
+        color: $text;
+      }
+      &.titl {
+        color: $text;
+      }
+    }
+    .chip {
+      background: rgba(170, 115, 64, 0.5);
+      color: $text;
+    }
+    div.def_basic, .def_basic .EN {
+
+      color: $text;
+    }
   }
 </style>

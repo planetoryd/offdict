@@ -7,7 +7,7 @@ use config::{Config, File, FileFormat};
 use gdkx11::gdk::ffi::GDK_CURRENT_TIME;
 use offdictd::{self, def_bin::WrapperDef, *};
 use rust_stemmers::{Algorithm, Stemmer};
-use std::{borrow::Cow, env, fs, path::PathBuf, sync::Arc, sync::RwLock, thread};
+use std::{borrow::Cow, env, fs, path::PathBuf, sync::Arc, sync::RwLock, thread, time::Instant};
 use tauri::{
     self, api::dialog, utils::debug_eprintln, ClipboardManager, GlobalShortcutManager, Manager,
     PhysicalPosition, Window, WindowEvent,
@@ -29,6 +29,8 @@ struct Handler<T: ClipboardManager> {
     en_stemmer: Stemmer,
 }
 
+use gtk::glib;
+
 static mut pos: Option<PhysicalPosition<i32>> = None;
 
 impl<T: ClipboardManager> ClipboardHandler for Handler<T> {
@@ -40,7 +42,7 @@ impl<T: ClipboardManager> ClipboardHandler for Handler<T> {
             return CallbackResult::Next;
         }
 
-        let r: Cow<str> = Cow::Borrowed(cleanup_clipboard_input(&k));
+        let r: Cow<str> = Cow::Owned(cleanup_clipboard_input(&k).to_owned());
 
         println!("clip: {}", r.as_ref());
         self.app.emit("clip", r.as_ref()).unwrap();
@@ -58,10 +60,11 @@ impl<T: ClipboardManager> ClipboardHandler for Handler<T> {
 
         // doesnt really work on kde, only sets it glowy
         // self.app.set_focus().expect("cannot focus window");
-
-        unsafe {
+        // https://stackoverflow.com/questions/66510406/gtk-rs-how-to-update-view-from-another-thread
+        glib::idle_add(move || unsafe { 
             ENTRY.as_ref().unwrap().set_text(&r);
-        }
+            glib::source::Continue(false)
+        });
 
         CallbackResult::Next
     }
@@ -90,6 +93,9 @@ pub struct OffdictState(pub Arc<InnerState>);
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 
+
+
+
 #[timed]
 #[tauri::command]
 fn defs<'a>(
@@ -97,6 +103,8 @@ fn defs<'a>(
     query: &'a str,
     fuzzy: bool,
 ) -> Result<Vec<Def>, &'static str> {
+    
+    let ins = Instant::now();
     // let state_guard = state.0.read().unwrap();
     let db_ = state.0.db.read();
     let db = db_.as_ref().unwrap().as_ref().unwrap();

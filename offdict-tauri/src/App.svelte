@@ -28,6 +28,11 @@
   let show_not_found = true; // clip input was supposed to show explicit error
   let notfound = false;
   let welcome = true;
+  function dark() {
+    window.document.body.classList.add("dark");
+  }
+
+  dark();
 
   listen("error", (e) => {});
   listen("clip", (e) => {
@@ -325,7 +330,7 @@
         <!-- <div class="card-image">
         <img src="public/svelte.svg">
       </div> -->
-        <div class="card-header">
+        <div class="card-header" on:click={() => (def.showFooter = true)}>
           <div class="card-title h5">
             {def?.word}
           </div>
@@ -372,7 +377,9 @@
             {/each}
           {/if}
         </div>
-        <div class="card-footer">{def?.dictName}</div>
+        {#if def.showFooter}
+          <div class="card-footer">{def?.dictName}</div>
+        {/if}
       </div>
     {/each}
   </div>
@@ -400,28 +407,42 @@
     margin: 0;
     padding: 0;
   }
+  div.container {
+    padding-right: 25px;
+    padding-bottom: 50px;
+  }
   .card {
     margin: 0px;
     margin-left: 8px;
     border: none;
     padding-top: 0;
+    .card-body {
+      padding: 5px;
+      padding-left: 15px;
+      padding-right: 15px;
+      padding-bottom: 2px;
+    }
+    &:first-child {
+      margin-top: 20px;
+      .card-header {
+        margin-top: 10px;
+      }
+    }
+    &:first-child.enable-inputheader {
+      margin-top: 75px;
+    }
   }
   .menu {
     margin-top: 5px;
     margin-bottom: 25px;
   }
-  .card:first-child {
-    margin-top: 20px;
-  }
-  .card:first-child.enable-inputheader {
-    margin-top: 75px;
-  }
+
   :global(.svelte-tabs li.svelte-tabs__tab:focus) {
     outline: none;
   }
   :global(li.svelte-tabs__selected) {
     border-bottom: 0 solid rgba(128, 128, 128, 0.514) !important;
-    background: rgba(9, 78, 158, 0.547) !important;
+    background: rgba(9, 79, 158, 0.425) !important;
     color: rgba(255, 255, 255, 1) !important;
     &:hover {
       color: rgba(255, 253, 253, 0.76) !important;
@@ -433,8 +454,8 @@
     margin: 2px;
     margin-right: 8px;
     margin-left: 0;
-    padding-top: 5px !important;
-    padding-bottom: 5px !important;
+    padding-top: 2px !important;
+    padding-bottom: 2px !important;
     border-radius: 2px;
   }
   :global(.svelte-tabs__tab:hover) {
@@ -451,6 +472,13 @@
   }
   .card-header {
     padding-top: 0;
+    &:hover {
+      text-decoration-line: underline;
+      text-decoration-style: wavy;
+      text-decoration-color: rgba(105, 128, 0, 0.466);
+      text-underline-offset: 4px;
+      text-decoration-thickness: 2px;
+    }
   }
   .notfound {
     padding: 15px;
@@ -462,9 +490,31 @@
     margin: 10px;
     background: rgba(0, 119, 255, 0.158);
   }
-  .card-body {
-    padding: 5px;
-    padding-left: 15px;
-    padding-right: 15px;
+
+  :global(body.dark) {
+    $bg: rgb(21, 63, 68);
+    $text: rgba(255, 255, 255, 0.692);
+    background: $bg;
+    color: $text;
+    .welcome {
+      background: rgba(255, 255, 255, 0.308);
+      color: rgba(255, 255, 255, 0.829);
+    }
+    .card {
+      background-color: rgba(255, 255, 255, 0);
+    }
+    .card-header {
+      color: rgba(255, 255, 255, 0.9);
+      &:hover {
+        text-decoration-line: underline;
+        text-decoration-style: wavy;
+        text-decoration-color: rgba(233, 181, 11, 0.8);
+        text-underline-offset: 4px;
+        text-decoration-thickness: 2px;
+      }
+    }
+    .card-footer {
+      color: rgba(212, 212, 212, 0.37);
+    }
   }
 </style>
