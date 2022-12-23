@@ -516,5 +516,22 @@
     .card-footer {
       color: rgba(212, 212, 212, 0.37);
     }
+    :global(.svelte-tabs li.svelte-tabs__tab:focus) {
+      outline: none;
+    }
+    :global(li.svelte-tabs__selected) {
+      background: rgba(158, 123, 9, 0.425) !important;
+      color: rgba(255, 255, 255, 1) !important;
+      &:hover {
+        color: rgba(255, 253, 253, 0.76) !important;
+      }
+    }
+    :global(.svelte-tabs__tab) {
+      background: rgba(158, 123, 9, 0.425);
+      color: rgba(190, 190, 190, 0.925) !important;
+    }
+    :global(.svelte-tabs__tab:hover) {
+      color: rgba(182, 182, 182, 0.582) !important;
+    }
   }
 </style>

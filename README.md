@@ -5,6 +5,7 @@ Totally offline performant dictionary, with prefix fuzzy autocompleting search, 
 - Linux only, currently
 
 ![](./sc.png)
+![](dark.png)
 
 - A format I camp up with deliberately when cleaning up some dictionary files
     - [x] API server
