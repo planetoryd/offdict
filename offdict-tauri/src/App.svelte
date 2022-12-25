@@ -24,6 +24,7 @@
   let currentIndex = -1;
   let inputheader = false;
   let inputWord;
+  let extensive;
   let def_list = []; // Final list of defs
   let show_not_found = true; // clip input was supposed to show explicit error
   let notfound = false;
@@ -41,9 +42,10 @@
     welcome = false;
     onInput();
   });
-  listen("set_input", (e) => {
+  listen("set_input", (e: any) => {
     welcome = false;
-    inputWord = e.payload;
+    inputWord = e.payload.inputWord;
+    extensive = e.payload.extensive;
   });
 
   listen("importing", (e) => {
@@ -91,6 +93,7 @@
   listen("def_list", (e) => {
     def_list = e.payload as [any];
     welcome = false;
+    console.log(def_list);
     if (def_list.length === 0) {
       notfound = true;
     } else {
@@ -100,29 +103,11 @@
 
   async function onInput() {
     // candidates = ;
-    let qucik_res: [any] = await invoke("defs", {
+    let qucik_res: [any] = await invoke("input", {
       query: inputWord,
-      fuzzy: false,
+      expensive: false,
     });
-    // console.log(await invoke("defs", { query: currentWord }));
-    console.log(def_list);
-    candidates = qucik_res.map((e, i) => ({ word: e.word, id: i }));
-    if (qucik_res[0]) {
-      def_list = qucik_res; // update only when results present
-      currentWord = qucik_res[0].word;
-      currentIndex = 0;
-      // show();
-    } else {
-      // show loading status
 
-      let fuzzy_res: [any] = await invoke("defs", {
-        query: inputWord,
-        fuzzy: true,
-      });
-      def_list = fuzzy_res;
-      console.log("fuzzy", fuzzy_res);
-      notfound = true;
-    }
     // console.log(candidates);
     // toast.success("Always at the bottom.", {
     //   position: "bottom-center",
@@ -310,7 +295,15 @@
       <div class="card welcome">type anything to start</div>
     {/if}
     {#if notfound}
-      <div class="card notfound">Not found - {inputWord}</div>
+      <div class="card notfound">
+        Not found, <div class="chip">{inputWord}</div>
+        <br />
+        {#if !extensive}
+          Try hitting
+          <div class="chip">Enter</div>
+          to initiate an extensive search
+        {/if}
+      </div>
     {/if}
 
     {#each def_list as def}
@@ -324,7 +317,7 @@
           const { inView, entry, scrollDirection, observer, node } =
             event.detail;
           def.in = inView;
-          console.log(def);
+          // console.log(def);
         }}
       >
         <!-- <div class="card-image">
@@ -339,8 +332,8 @@
           </div>
         </div>
         <div class="card-body">
-          {#if def && def.definitions}
-            {#if def.definitions[0]?.definitions && def.definitions[0].definitions[0] && (def.type_groups = def.definitions.filter((x) => x.type))}
+          {#if def}
+            {#if def.definitions && def.definitions[0]?.definitions && def.definitions[0].definitions[0] && (def.type_groups = def.definitions.filter((x) => x.type))}
               <!-- grouped by type -->
               <Tabs>
                 <TabList>
@@ -444,6 +437,11 @@
     border-bottom: 0 solid rgba(128, 128, 128, 0.514) !important;
     background: rgba(9, 79, 158, 0.425) !important;
     color: rgba(255, 255, 255, 1) !important;
+    margin: 2px;
+    margin-right: 8px;
+    margin-left: 0;
+    padding-top: 2px !important;
+    padding-bottom: 2px !important;
     &:hover {
       color: rgba(255, 253, 253, 0.76) !important;
     }
@@ -457,6 +455,7 @@
     padding-top: 2px !important;
     padding-bottom: 2px !important;
     border-radius: 2px;
+    border-bottom: 0;
   }
   :global(.svelte-tabs__tab:hover) {
     color: rgba(40, 78, 148, 0.801) !important;
@@ -496,8 +495,8 @@
     $text: rgba(255, 255, 255, 0.692);
     background: $bg;
     color: $text;
-    .welcome {
-      background: rgba(255, 255, 255, 0.308);
+    .card.welcome {
+      background: rgba(255, 255, 255, 0.15);
       color: rgba(255, 255, 255, 0.829);
     }
     .card {
@@ -529,9 +528,17 @@
     :global(.svelte-tabs__tab) {
       background: rgba(158, 123, 9, 0.425);
       color: rgba(190, 190, 190, 0.925) !important;
+      border: 0;
     }
     :global(.svelte-tabs__tab:hover) {
       color: rgba(182, 182, 182, 0.582) !important;
     }
+  }
+  div.notfound {
+    display: block;
+  }
+  .chip {
+    background: rgba(170, 115, 64, 0.5);
+    color: rgba(255, 255, 255, 0.9);
   }
 </style>

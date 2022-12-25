@@ -1,5 +1,6 @@
 <script>
   export let def;
+  
   let ele;
   import { onMount, onDestroy } from "svelte";
   import { inview } from "svelte-inview";
@@ -9,6 +10,7 @@
   onDestroy(() => {
     window.viewlist.delete(ele);
   });
+
 </script>
 
 <div
@@ -54,6 +56,9 @@
   {/if}
   {#if def.info}
     <div class="info">{def.info}</div>
+  {/if}
+  {#if def.tip}
+    <div class="info">{def.tip}</div>
   {/if}
   {#if def.related}
     {#each def.related as re}
@@ -130,7 +135,7 @@
       margin-top: 15px;
     }
   }
-  span {
+  :global(span) {
     display: inline;
     padding-top: 2px;
     padding-bottom: 2px;
@@ -146,26 +151,43 @@
     padding-left: 8px;
     padding-right: 8px;
   }
-  :global(body.dark .explain) {
+  :global(body.dark) {
     $text: rgba(255, 255, 255, 0.966);
-    color: $text;
-    background: transparent;
-    span {
-      &.CN,
-      &.EN {
-        background: rgba(245, 245, 245, 0);
-        color: $text;
+    .explain {
+      color: $text;
+      background: transparent;
+      span {
+        &.CN,
+        &.EN {
+          background: rgba(245, 245, 245, 0);
+          color: $text;
+        }
+        &.titl {
+          color: $text;
+        }
       }
-      &.titl {
+      .unknown {
+        :nth-child(odd) {
+          &.CN,
+          &.EN {
+            color: #b3e4d3d8;
+          }
+        }
+        :nth-child(even) {
+          &.CN,
+          &.EN {
+            color: #c9d4cde5;
+          }
+        }
+      }
+
+      div.def_basic,
+      .def_basic .EN {
         color: $text;
       }
     }
     .chip {
       background: rgba(170, 115, 64, 0.5);
-      color: $text;
-    }
-    div.def_basic, .def_basic .EN {
-
       color: $text;
     }
   }

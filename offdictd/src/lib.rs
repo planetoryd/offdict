@@ -7,6 +7,7 @@ pub use serde_yaml::{self};
 
 pub use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+use std::borrow::Borrow;
 use std::collections::{self, BTreeMap, BTreeSet, HashMap};
 
 use std::io::BufWriter;
@@ -138,9 +139,9 @@ impl offdict {
     }
 
     #[timed]
-    pub fn candidates(&self, query: &str, d: u32, sub: bool) -> candidates {
+    pub fn candidates(&self, query: &str, expensive: bool, sub: bool) -> candidates {
         if self.fst_set.is_some() {
-            suggest::suggest(self.fst_set.as_ref().unwrap(), query, d, sub).unwrap()
+            suggest::suggest(self.fst_set.as_ref().unwrap(), query, expensive, sub).unwrap()
         } else {
             vec![]
         }
@@ -166,8 +167,8 @@ impl offdict {
     }
 
     #[timed]
-    pub fn search(&self, query: &str, num: usize, fuzzy: bool) -> Vec<DefItemWrapped> {
-        let mut cands = self.candidates(query, 2, fuzzy);
+    pub fn search(&self, query: &str, num: usize, expensive: bool) -> Vec<DefItemWrapped> {
+        let mut cands = self.candidates(query, expensive, false);
         cands.truncate(num);
         let mut res: Vec<DefItemWrapped> = vec![];
 
@@ -445,10 +446,19 @@ pub fn flatten_human(wr: Vec<DefItemWrapped>) -> Vec<Def> {
 }
 
 impl Def {
-    fn normalize_def(mut self) -> Self {
+    pub fn normalize_def(mut self) -> Self {
         if self.groups.is_some() {
             self.definitions = self.groups;
             self.groups = None;
+            if self.definitions.is_some() {
+                self.definitions = Some(
+                    self.definitions
+                        .unwrap()
+                        .into_iter()
+                        .map(|x| x.normalize_def())
+                        .collect(),
+                );
+            }
         }
         // d = recursive_path_shorten(d);
         self
@@ -462,6 +472,196 @@ impl Def {
         }
     }
 }
+
+use clap::{Parser, Subcommand};
+#[allow(non_camel_case_types)]
+#[derive(Debug, Subcommand)]
+enum Commands {
+    #[command(
+        about = "Import definitions from an yaml file",
+        arg_required_else_help = false
+    )]
+    yaml {
+        #[arg(short = 'p', required = true)]
+        path: String,
+        #[arg(short = 'c', long)]
+        check: bool,
+        #[arg(short = 's', long)]
+        save: bool,
+    },
+    #[command(about = "Stats")]
+    stat {},
+    #[command(about = "Fuzzy query (prefix)")]
+    lookup {
+        query: String,
+    },
+    // TODO: bincode import
+    // #[command(about = "Convert an yaml file to cbor")]
+    // cbor {
+    //     // Converts a yaml to cbor and save it.
+    //     #[arg(short = 'p')]
+    //     path: String,
+    //     #[arg(short = 'n')]
+    //     name: String, // Name to be displayed
+    // },
+    reset {},
+    #[command(about = "Build index, required after adding or removing words")]
+    build {},
+}
+
+#[derive(Parser, Debug)]
+#[command(about = "Offline dictionary", long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+pub fn tui(db_w: &mut offdict) -> Result<(), Box<dyn Error>> {
+    let args = Cli::parse();
+
+    match args.command {
+        Some(Commands::yaml { path, check, save }) => {
+            if check {
+                let options = glob::MatchOptions {
+                    case_sensitive: false,
+                    ..Default::default()
+                };
+
+                for entry in glob::glob_with(&path, options)? {
+                    let entr = entry?;
+                    println!("checking {}", entr.to_str().unwrap());
+                    Def::check_yaml(entr.to_str().unwrap(), save);
+                }
+
+                return Ok(());
+            } else {
+                match db_w.import_glob(&path) {
+                    Ok(()) => println!("imported"),
+                    Err(e) => println!("{:?}", e),
+                }
+            }
+        }
+        Some(Commands::stat {}) => {
+            let s = db_w.stat();
+            println!("Words in database: {}", s.words);
+        }
+        Some(Commands::lookup { query }) => {
+            for d in db_w.search(&query, 1, true) {
+                let list: Vec<Def> = d.vec_human();
+                println!("{}", serde_yaml::to_string::<Vec<Def>>(&list)?)
+            }
+        }
+        Some(Commands::reset {}) => {
+            db_w.reset_db();
+            println!("reset.");
+        }
+        Some(Commands::build {}) => {
+            let c = db_w.build_fst_from_db();
+            println!("built, {} words", c);
+        }
+        None => {}
+    };
+    Ok(())
+}
+
+use std::sync::{Arc, RwLock};
+use tokio::{self};
+use warp::Filter;
+
+#[derive(Serialize, Deserialize)]
+pub struct Stat {
+    words: u64,
+}
+
+pub async fn serve(db_tok: Arc<RwLock<offdict>>) {
+    let lookup = warp::get()
+        .and(warp::path("q"))
+        .and(warp::path::param::<String>())
+        .map(move |word: String| {
+            let db_r = db_tok.read().unwrap();
+            let word = percent_encoding::percent_decode_str(&word)
+                .decode_utf8()
+                .unwrap()
+                .to_string();
+            warp::reply::json(&api_q(&db_r, &word))
+        });
+
+    let stat = warp::get()
+        .and(warp::path("stat"))
+        .map(|| warp::reply::json(&Stat { words: 0 }));
+
+    warp::serve(lookup.or(stat))
+        .run(([127, 0, 0, 1], 3030))
+        .await
+}
+
+pub async fn repl(db_: Arc<RwLock<offdict>>) {
+    loop {
+        let li = readline().await.unwrap();
+        let li = li.trim();
+        if li.is_empty() {
+            continue;
+        } else {
+            let db = db_.read().unwrap();
+
+            match respond(li, db.borrow()) {
+                Ok(quit) => {
+                    if quit {
+                        break;
+                    }
+                }
+                Err(err) => {
+                    write!(std::io::stdout(), "{}", err)
+                        .map_err(|e| e.to_string())
+                        .unwrap();
+                    std::io::stdout()
+                        .flush()
+                        .map_err(|e| e.to_string())
+                        .unwrap();
+                }
+            }
+        }
+    }
+}
+async fn readline() -> Result<String, Box<dyn Error>> {
+    let mut out = tokio::io::stdout();
+    out.write_all(b"@ ").await?;
+    out.flush().await?;
+    let mut buffer = Vec::new();
+    tokio::io::stdin().read(&mut buffer).await?;
+    let stdin = tokio::io::stdin();
+    let reader = tokio::io::BufReader::new(stdin);
+    let mut lines = tokio::io::AsyncBufReadExt::lines(reader);
+    Ok(lines.next_line().await?.unwrap())
+}
+
+
+pub fn api_q(db: &offdict, query: &str) -> HashMap<String, Vec<Def>> {
+    println!("\nq: {}", query);
+    let arr = db.search(&query, 30, true);
+    let mut m = HashMap::new();
+    for wr in arr {
+        m.insert(wr.word.clone(), wr.vec_human());
+    }
+
+    m
+}
+
+fn respond(line: &str, db: &offdict) -> Result<bool, String> {
+    let mut arr = db.search(line, 2, true);
+
+    println!("{} results", arr.len());
+    arr.truncate(2);
+    for d in arr.into_iter() {
+        println!(
+            "{}",
+            serde_yaml::to_string::<Vec<Def>>(&d.vec_human()).unwrap()
+        );
+    }
+
+    Ok(false)
+}
+
 
 pub use def::*;
 pub mod def;

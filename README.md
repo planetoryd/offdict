@@ -18,9 +18,6 @@ API:
 - `127.0.0.1:3030/q/some_word_to_lookup`
 - `/stat/`
 
-Source files that work with it: https://github.com/planetoryd/OpenMdicts
-
-Import them with `offdict yaml -p 'path/OpenMdicts/<wildcard supported>.yaml'`
 Then build the index `offdict build`
 
 ```sh
@@ -29,14 +26,14 @@ apt install libxcb-shape0-dev libxcb-xfixes0-dev # required for building clipboa
 
 ## Usage
 
-- Input anywhere to start live search
-- Press ⬆️ or ⬇️ for different words
+- Input anywhere to start live search.
+- Copy anything and it would pop up.
 - Press ⬅️ or ➡️ for scrolling
-- It loads `config.json5` in the working directory
+- Tap `Enter` to perform an extensive & expensive search
+- It loads `config.json5` in the working directory. 
 - To import dictionaries
     1. Just grab a `data` folder from somewhere (might have vulnerability)
-    2. Import with GUI
-    3. Import with offdictd
+    2. Import with `offdict yaml -p '<wildcard for files>.yaml' -s` (works for both CLI and GUI binaries)
 
 ## notes 
 

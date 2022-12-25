@@ -24,6 +24,7 @@ enum Score {
     ExactPrefixCaseI,
     Leven1,
     Leven1Cap, // Leven1 with first letter capitalized ?
+    Leven2
 }
 
 use std::cmp::Ordering;
@@ -88,7 +89,7 @@ impl Into<f32> for Score {
 pub fn suggest<D: AsRef<[u8]>>(
     set: &Set<D>,
     q: &str,
-    d: u32,
+    expensive: bool,
     sub: bool,
 ) -> Result<Vec<String>, Box<dyn Error>> {
     let len = q.chars().count();
@@ -115,6 +116,15 @@ pub fn suggest<D: AsRef<[u8]>>(
         let mut stream = set.search(&pre).into_stream();
         collect_to_map(stream, &mut map, Score::Leven1, q)?;
     };
+
+    // Fallbacks, levenshtein of distance 2
+    if expensive && map.is_empty() {
+        let lev = Levenshtein::new(q, 2)?;
+        let pre = lev.starts_with();
+
+        let mut stream = set.search(&pre).into_stream();
+        collect_to_map(stream, &mut map, Score::Leven2, q)?;
+    }
 
     let mut ve: Vec<(String, Score)> = map.into_iter().collect();
     ve.sort_by(|a, b| {

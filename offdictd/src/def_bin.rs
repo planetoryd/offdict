@@ -108,7 +108,8 @@ impl From<super::Def> for Def {
 
 impl From<Def> for super::Def {
     fn from(value: Def) -> Self {
-        unsafe { transmute(value) }
+        let mut d: Self = unsafe { transmute(value) };
+        d.normalize_def()
     }
 }
 

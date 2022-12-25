@@ -7,7 +7,10 @@ use config::{Config, File, FileFormat};
 use gdkx11::gdk::ffi::GDK_CURRENT_TIME;
 use offdictd::{self, def_bin::WrapperDef, *};
 use rust_stemmers::{Algorithm, Stemmer};
-use std::{borrow::Cow, env, fs, path::PathBuf, sync::Arc, sync::RwLock, thread, time::Instant};
+use std::{
+    borrow::Cow, collections::BTreeSet, env, fs, iter::FromIterator, path::PathBuf, sync::Arc,
+    sync::RwLock, thread, time::Instant,
+};
 use tauri::{
     self, api::dialog, utils::debug_eprintln, ClipboardManager, GlobalShortcutManager, Manager,
     PhysicalPosition, Window, WindowEvent,
@@ -61,7 +64,7 @@ impl<T: ClipboardManager> ClipboardHandler for Handler<T> {
         // doesnt really work on kde, only sets it glowy
         // self.app.set_focus().expect("cannot focus window");
         // https://stackoverflow.com/questions/66510406/gtk-rs-how-to-update-view-from-another-thread
-        glib::idle_add(move || unsafe { 
+        glib::idle_add(move || unsafe {
             ENTRY.as_ref().unwrap().set_text(&r);
             glib::source::Continue(false)
         });
@@ -79,39 +82,27 @@ fn cleanup_clipboard_input(s: &str) -> &str {
     s
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct OffdictConfig {
     data_path: String,
     hide_on_blur: bool,
 }
 
-pub struct InnerState {
-    pub db: RwLock<Option<offdict>>,
-}
+pub type InnerState = RwLock<offdict>;
 
 pub struct OffdictState(pub Arc<InnerState>);
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 
-
-
-
 #[timed]
 #[tauri::command]
-fn defs<'a>(
+fn input<'a>(
     state: tauri::State<'a, OffdictState>,
     query: &'a str,
-    fuzzy: bool,
-) -> Result<Vec<Def>, &'static str> {
-    
-    let ins = Instant::now();
-    // let state_guard = state.0.read().unwrap();
-    let db_ = state.0.db.read();
-    let db = db_.as_ref().unwrap().as_ref().unwrap();
-
-    let d = db.search(query, 5, fuzzy);
-
-    Ok(offdictd::flatten_human(d))
+    expensive: bool,
+) -> Result<(), &'static str> {
+    onInput(query, expensive);
+    Ok(())
 }
 
 #[tauri::command]
@@ -125,8 +116,8 @@ fn import<'a>(state: tauri::State<'a, OffdictState>) {
         .pick_folder(move |folder| match folder {
             Some(folder) => {
                 thread::spawn(move || {
-                    let mut db_ = v.db.write().unwrap();
-                    let db = db_.as_mut().unwrap();
+                    // let mut db_ = v.db.write().unwrap();
+                    let mut db = v.write().unwrap();
 
                     println!("folder picked, {}", folder.display());
                     let paths = fs::read_dir(folder).unwrap();
@@ -216,7 +207,7 @@ fn plain_header() -> HeaderBar {
     header
 }
 
-fn input_header() -> HeaderBar {
+fn input_header(win: Window) -> HeaderBar {
     let header = gtk::HeaderBar::builder()
         .opacity(1.0)
         .visible(true)
@@ -231,7 +222,17 @@ fn input_header() -> HeaderBar {
     bo.pack_start(en, true, true, 0);
     en.connect_changed(|e| {
         dbg!(e.text());
-        onInput(e.text().as_str());
+        onInput(e.text().as_str(), false);
+    });
+    en.connect_key_press_event(move |e, k| {
+        if k.keyval() == gdk::keys::constants::Return {
+            println!("expensive search");
+            onInput(e.text().as_str(), true);
+        } else if k.keyval() == gdk::keys::constants::Escape {
+            save_pos(&win);
+            win.hide().unwrap();
+        }
+        Inhibit::default()
     });
     bo.pack_end(&btn, false, false, 0);
     btn.connect_clicked(|b| {
@@ -243,19 +244,29 @@ fn input_header() -> HeaderBar {
     header
 }
 
-fn onInput(s: &str) {
-    let db_ = unsafe { state_.as_ref().unwrap().db.read() };
+#[derive(Serialize, Clone)]
+struct set_input {
+    inputWord: String,
+    extensive: bool,
+}
 
-    let db = db_.as_ref().unwrap().as_ref().unwrap();
+fn onInput(s: &str, expensive: bool) {
+    let db_ = unsafe { state_.as_ref().unwrap().read() };
 
-    let mut d = db.search(s, 5, false);
+    let db = db_.as_ref().unwrap();
+
+    let mut d = db.search(s, 5, expensive);
     let mut def_list = offdictd::flatten_human(d);
     unsafe {
-        w.as_ref().unwrap().emit("set_input", s).unwrap();
+        let si = set_input {
+            inputWord: s.to_owned(),
+            extensive: expensive,
+        };
+        w.as_ref().unwrap().emit("set_input", si).unwrap();
     }
 
     if def_list.is_empty() {
-        d = db.search(s, 5, true);
+        d = db.search(s, 5, false);
         def_list = offdictd::flatten_human(d);
         unsafe {
             w.as_ref().unwrap().emit("def_list", &def_list).unwrap();
@@ -268,19 +279,22 @@ fn onInput(s: &str) {
 }
 
 fn main() {
-    let x = tauri::Builder::default()
-        .setup(|app| {
-            println!("{}", env::current_dir().unwrap().to_str().unwrap());
-
-            if let Ok(config) = Config::builder()
-                .set_default("data_path", ".")
-                .unwrap()
-                .set_default("hide_on_blur", false)
-                .unwrap()
-                .add_source(File::new("config", FileFormat::Json5))
-                .build()
-            {
-                let conf: OffdictConfig = config.try_deserialize().unwrap();
+    if let Ok(config) = Config::builder()
+        .set_default("data_path", ".")
+        .unwrap()
+        .set_default("hide_on_blur", false)
+        .unwrap()
+        .add_source(File::new("config", FileFormat::Json5))
+        .build()
+    {
+        let conf: OffdictConfig = config.try_deserialize().unwrap();
+        let db_path = PathBuf::from(conf.data_path.clone());
+        println!("{:?}", conf);
+        let mut d = offdict::open_db(db_path.to_str().unwrap().to_owned());
+        offdictd::tui(&mut d).unwrap();
+        let x = tauri::Builder::default()
+            .setup(move |app| {
+                println!("{}", env::current_dir().unwrap().to_str().unwrap());
                 println!("{:?}", conf);
                 let window = app.get_window("main").unwrap();
                 let w_on_ev = app.get_window("main").unwrap();
@@ -292,7 +306,7 @@ fn main() {
                 }
 
                 let win = window.gtk_window().unwrap();
-                let header = input_header();
+                let header = input_header(w_on_esc);
                 let provider = gtk::CssProvider::new();
                 provider.load_from_data(&CSS).unwrap();
 
@@ -302,6 +316,21 @@ fn main() {
                     gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
                 );
                 // win.add(&header);
+                win.connect_key_press_event(|wi, ek| unsafe {
+                    use gdk::keys::constants::*;
+                    let excl: BTreeSet<gdk::keys::Key> = BTreeSet::from_iter(
+                        vec![
+                            Return, Left, Right, Escape, Alt_L, Alt_R, Shift_L, Shift_R, Caps_Lock,
+                            Tab, Up, Down, Super_L, Super_R, Home, End, Page_Down, Page_Up,
+                        ]
+                        .into_iter(),
+                    );
+                    println!("{:?}", ek.keyval());
+                    if !excl.contains(&ek.keyval()) && !ENTRY.as_ref().unwrap().is_focus() {
+                        ENTRY.as_ref().unwrap().set_is_focus(true);
+                    }
+                    Inhibit(false)
+                });
                 win.set_titlebar(Some(&header));
 
                 win.set_border_width(0);
@@ -344,32 +373,31 @@ fn main() {
                     state_ = Some(state.0.clone());
                 }
 
-                let mut db = v.db.write().unwrap();
+                let mut db = v.write().unwrap();
 
-                let db_path = PathBuf::from(conf.data_path.clone());
+                // *db = d;
 
-                *db = Some(offdict::open_db(db_path.to_str().unwrap().to_owned()));
-            } else {
-                println!("Config not found in working directory");
-                panic!();
-            }
+                tauri::async_runtime::spawn(serve(v.clone()));
 
-            let mut m = Master::new(Handler {
-                app: app.get_window("main").unwrap(),
-                clip: app.clipboard_manager(),
-                en_stemmer: Stemmer::create(Algorithm::English),
-            });
+                let mut m = Master::new(Handler {
+                    app: app.get_window("main").unwrap(),
+                    clip: app.clipboard_manager(),
+                    en_stemmer: Stemmer::create(Algorithm::English),
+                });
 
-            thread::spawn(move || {
-                println!("clipboard ..");
-                m.run().unwrap()
-            });
-            Ok(())
-        })
-        .manage(OffdictState(Arc::new(InnerState {
-            db: RwLock::new(None),
-        })))
-        .invoke_handler(tauri::generate_handler![defs, import]);
-    x.run(tauri::generate_context!())
-        .expect("error while running tauri application");
+                thread::spawn(move || {
+                    println!("clipboard ..");
+                    m.run().unwrap()
+                });
+                Ok(())
+            })
+            .manage(OffdictState(Arc::new(RwLock::new(d))))
+            .invoke_handler(tauri::generate_handler![input, import]);
+
+        x.run(tauri::generate_context!())
+            .expect("error while running tauri application");
+    } else {
+        println!("Config not found in working directory");
+        panic!();
+    }
 }
