@@ -516,7 +516,8 @@ struct Cli {
     command: Option<Commands>,
 }
 
-pub fn tui(db_w: &mut offdict) -> Result<(), Box<dyn Error>> {
+// continue running ?
+pub fn tui(db_w: &mut offdict) -> Result<bool, Box<dyn Error>> {
     let args = Cli::parse();
 
     match args.command {
@@ -533,35 +534,39 @@ pub fn tui(db_w: &mut offdict) -> Result<(), Box<dyn Error>> {
                     Def::check_yaml(entr.to_str().unwrap(), save);
                 }
 
-                return Ok(());
+                return Ok(false);
             } else {
                 match db_w.import_glob(&path) {
                     Ok(()) => println!("imported"),
                     Err(e) => println!("{:?}", e),
                 }
             }
+            Ok(false)
         }
         Some(Commands::stat {}) => {
             let s = db_w.stat();
             println!("Words in database: {}", s.words);
+            Ok(false)
         }
         Some(Commands::lookup { query }) => {
             for d in db_w.search(&query, 1, true) {
                 let list: Vec<Def> = d.vec_human();
                 println!("{}", serde_yaml::to_string::<Vec<Def>>(&list)?)
             }
+            Ok(false)
         }
         Some(Commands::reset {}) => {
             db_w.reset_db();
             println!("reset.");
+            Ok(false)
         }
         Some(Commands::build {}) => {
             let c = db_w.build_fst_from_db();
             println!("built, {} words", c);
+            Ok(true)
         }
-        None => {}
-    };
-    Ok(())
+        None => Ok(true)
+    }
 }
 
 use std::sync::{Arc, RwLock};

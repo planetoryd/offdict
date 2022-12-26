@@ -283,7 +283,9 @@ fn main() {
     let db_path = PathBuf::from(conf.data_path.clone());
     println!("{:?}", conf);
     let mut d = offdict::open_db(db_path.to_str().unwrap().to_owned());
-    offdictd::tui(&mut d).unwrap();
+    if !offdictd::tui(&mut d).unwrap() {
+        return;
+    }
     let x = tauri::Builder::default()
         .setup(move |app| {
             println!("{}", env::current_dir().unwrap().to_str().unwrap());
