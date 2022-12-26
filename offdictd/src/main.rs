@@ -1,37 +1,18 @@
 use std::{
     borrow::{Borrow, BorrowMut},
-    cell::RefCell,
     path::PathBuf,
     sync::{Arc, RwLock},
 };
 
-// use ciborium::de::from_reader;
-
-use percent_encoding;
 use tokio::{self};
-use warp::Filter;
 
-use config::{Config, File, FileFormat, Map};
 use offdictd::{def_bin::WrapperDef, *};
-
-#[derive(Debug, Deserialize)]
-struct OffdictConfig {
-    data_path: String,
-}
-
 /// Simple program to greet a person
 
 
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let config = Config::builder()
-        .set_default("data_path", ".")
-        .unwrap()
-        .add_source(File::new("config", FileFormat::Json5))
-        .build()
-        .unwrap();
-
-    let conf: OffdictConfig = config.try_deserialize().unwrap();
+    let conf = crate::config::get_config();
 
     let mut _db_path = PathBuf::from(conf.data_path.clone());
     let db_path = _db_path.to_str().unwrap();

@@ -9,8 +9,9 @@
   import toast, { Toaster } from "svelte-french-toast";
   import Def from "./lib/Def.svelte";
   import { Tabs, Tab, TabList, TabPanel } from "svelte-tabs";
-  import DefUnit from "./lib/DefUnit.svelte";
+  // import DefUnit from "./lib/DefUnit.svelte";
   import { inview } from "svelte-inview";
+  // import DefsOfType from "./lib/DefsOfType.svelte";
 
   export let dropdown = false;
   let candidates = [
@@ -78,12 +79,12 @@
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "ArrowRight") {
-      navNextDef();
+      scroll();
       e.stopPropagation();
       e.preventDefault();
     }
     if (e.key === "ArrowLeft") {
-      navNextDef(true);
+      scroll(true);
       e.stopPropagation();
       e.preventDefault();
     }
@@ -114,54 +115,18 @@
     // });
   }
 
-  function navNextDef(goPrev = false) {
-    // let arr = Array.from(window.viewlist)
-    //   .filter((x) => x[1]?.inView)
-    //   .sort(
-    //     (a, b) =>
-    //       a[0].getBoundingClientRect().y - b[0].getBoundingClientRect().y
-    //   );
-    let lastVisiblePlusOne: number = -1;
-    let arr = Array.from(window.viewlist);
-    arr.sort(
-      (a, b) => a[0].getBoundingClientRect().y - b[0].getBoundingClientRect().y
-    );
-    // Assumption: the Map iterates in the order of DOM elements
-    if (goPrev) arr.reverse();
-    for (let k in arr) {
-      if (!arr[parseInt(k) + 1]) break; // js tf
-      if (arr[k][1].inView && !arr[parseInt(k) + 1][1].inView) {
-        lastVisiblePlusOne = parseInt(k) + 1;
-        break;
-      }
-    }
-    if (lastVisiblePlusOne > -1) {
-      let e = arr[lastVisiblePlusOne][0];
-      // e.scrollIntoView({
-      //   behavior: "smooth",
-      //   block: "start",
-      // });
-      if (!goPrev)
-        window.scrollTo({
-          top: e.getBoundingClientRect().y + window.scrollY - 400,
-          behavior: "smooth",
-        });
-      else
-        window.scrollTo({
-          top: e.getBoundingClientRect().y + window.scrollY,
-          behavior: "smooth",
-        });
-    } else {
-      // should be
-      if (!goPrev)
-        window.scrollTo({
-          top: document.body.scrollHeight,
-          behavior: "smooth",
-        });
-      else window.scrollTo(0, 0);
-    }
+  function scroll(goPrev = false) {
+    if (!goPrev)
+      window.scrollTo({
+        top: 200 + window.scrollY,
+        behavior: "smooth",
+      });
+    else
+      window.scrollTo({
+        top: window.scrollY - 200,
+        behavior: "smooth",
+      });
   }
-  window.nav = navNextDef;
 </script>
 
 <main>
@@ -333,42 +298,11 @@
         </div>
         <div class="card-body">
           {#if def}
-            {#if def.definitions && def.definitions[0]?.definitions && def.definitions[0].definitions[0] && (def.type_groups = def.definitions.filter((x) => x.type))}
-              <!-- grouped by type -->
-              <Tabs>
-                <TabList>
-                  {#each def.type_groups as defi}
-                    <Tab>{defi.type}</Tab>
-                  {/each}
-                </TabList>
-                {#each def.type_groups as defi}
-                  <TabPanel>
-                    <Def def={defi} />
-                  </TabPanel>
-                {/each}
-              </Tabs>
-              {#if (def.rest_defs = def.definitions.filter((x) => !x.type)).length > 0}
-                <Def
-                  def={{
-                    ...def,
-                    definitions: def.rest_defs,
-                    type_groups: undefined,
-                    rest_defs: undefined,
-                  }}
-                />
-              {/if}
-            {:else}
-              <Def {def} />
-            {/if}
+            <Def {def} root={true}/>
           {/if}
           <!-- <pre class="code">
             <code>{JSON.stringify(def, null, 2)}</code>
           </pre> -->
-          {#if def.etymology}
-            {#each def.etymology as ety}
-              <div>{ety}</div>
-            {/each}
-          {/if}
         </div>
         {#if def.showFooter}
           <div class="card-footer">{def?.dictName}</div>

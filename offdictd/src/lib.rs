@@ -450,15 +450,15 @@ impl Def {
         if self.groups.is_some() {
             self.definitions = self.groups;
             self.groups = None;
-            if self.definitions.is_some() {
-                self.definitions = Some(
-                    self.definitions
-                        .unwrap()
-                        .into_iter()
-                        .map(|x| x.normalize_def())
-                        .collect(),
-                );
-            }
+        }
+        if self.definitions.is_some() {
+            self.definitions = Some(
+                self.definitions
+                    .unwrap()
+                    .into_iter()
+                    .map(|x| x.normalize_def())
+                    .collect(),
+            );
         }
         // d = recursive_path_shorten(d);
         self
@@ -568,6 +568,8 @@ use std::sync::{Arc, RwLock};
 use tokio::{self};
 use warp::Filter;
 
+pub mod config;
+
 #[derive(Serialize, Deserialize)]
 pub struct Stat {
     words: u64,
@@ -635,7 +637,6 @@ async fn readline() -> Result<String, Box<dyn Error>> {
     Ok(lines.next_line().await?.unwrap())
 }
 
-
 pub fn api_q(db: &offdict, query: &str) -> HashMap<String, Vec<Def>> {
     println!("\nq: {}", query);
     let arr = db.search(&query, 30, true);
@@ -661,7 +662,6 @@ fn respond(line: &str, db: &offdict) -> Result<bool, String> {
 
     Ok(false)
 }
-
 
 pub use def::*;
 pub mod def;

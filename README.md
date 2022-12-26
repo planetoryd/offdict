@@ -4,8 +4,8 @@ Totally offline performant dictionary, with prefix fuzzy autocompleting search, 
 
 - Linux only, currently
 
-![](./sc.png)
-![](dark.png)
+<img src="./sc.png" width="50%">
+<img src="./dark.png" width="50%">
 
 - A format I camp up with deliberately when cleaning up some dictionary files
     - [x] API server

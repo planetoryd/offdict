@@ -3,7 +3,7 @@
     windows_subsystem = "windows"
 )]
 use clipboard_master::{CallbackResult, ClipboardHandler, Master};
-use config::{Config, File, FileFormat};
+
 use gdkx11::gdk::ffi::GDK_CURRENT_TIME;
 use offdictd::{self, def_bin::WrapperDef, *};
 use rust_stemmers::{Algorithm, Stemmer};
@@ -279,125 +279,114 @@ fn onInput(s: &str, expensive: bool) {
 }
 
 fn main() {
-    if let Ok(config) = Config::builder()
-        .set_default("data_path", ".")
-        .unwrap()
-        .set_default("hide_on_blur", false)
-        .unwrap()
-        .add_source(File::new("config", FileFormat::Json5))
-        .build()
-    {
-        let conf: OffdictConfig = config.try_deserialize().unwrap();
-        let db_path = PathBuf::from(conf.data_path.clone());
-        println!("{:?}", conf);
-        let mut d = offdict::open_db(db_path.to_str().unwrap().to_owned());
-        offdictd::tui(&mut d).unwrap();
-        let x = tauri::Builder::default()
-            .setup(move |app| {
-                println!("{}", env::current_dir().unwrap().to_str().unwrap());
-                println!("{:?}", conf);
-                let window = app.get_window("main").unwrap();
-                let w_on_ev = app.get_window("main").unwrap();
-                let w_on_shortcut = app.get_window("main").unwrap();
-                let w_on_esc = app.get_window("main").unwrap();
+    let conf = offdictd::config::get_config();
+    let db_path = PathBuf::from(conf.data_path.clone());
+    println!("{:?}", conf);
+    let mut d = offdict::open_db(db_path.to_str().unwrap().to_owned());
+    offdictd::tui(&mut d).unwrap();
+    let x = tauri::Builder::default()
+        .setup(move |app| {
+            println!("{}", env::current_dir().unwrap().to_str().unwrap());
+            println!("{:?}", conf);
+            let window = app.get_window("main").unwrap();
+            let w_on_ev = app.get_window("main").unwrap();
+            let w_on_shortcut = app.get_window("main").unwrap();
+            let w_on_esc = app.get_window("main").unwrap();
 
-                unsafe {
-                    w = Some(app.get_window("main").unwrap());
-                }
+            unsafe {
+                w = Some(app.get_window("main").unwrap());
+            }
 
-                let win = window.gtk_window().unwrap();
-                let header = input_header(w_on_esc);
-                let provider = gtk::CssProvider::new();
-                provider.load_from_data(&CSS).unwrap();
+            let win = window.gtk_window().unwrap();
+            let header = input_header(w_on_esc);
+            let provider = gtk::CssProvider::new();
+            provider.load_from_data(&CSS).unwrap();
 
-                gtk::StyleContext::add_provider_for_screen(
-                    &gdk::Screen::default().expect("Error initializing gtk css provider."),
-                    &provider,
-                    gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+            gtk::StyleContext::add_provider_for_screen(
+                &gdk::Screen::default().expect("Error initializing gtk css provider."),
+                &provider,
+                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+            );
+            // win.add(&header);
+            win.connect_key_press_event(|wi, ek| unsafe {
+                use gdk::keys::constants::*;
+                let excl: BTreeSet<gdk::keys::Key> = BTreeSet::from_iter(
+                    vec![
+                        Return, Left, Right, Escape, Alt_L, Alt_R, Shift_L, Shift_R, Caps_Lock,
+                        Tab, Up, Down, Super_L, Super_R, Home, End, Page_Down, Page_Up, Control_L,
+                        Control_R,
+                    ]
+                    .into_iter(),
                 );
-                // win.add(&header);
-                win.connect_key_press_event(|wi, ek| unsafe {
-                    use gdk::keys::constants::*;
-                    let excl: BTreeSet<gdk::keys::Key> = BTreeSet::from_iter(
-                        vec![
-                            Return, Left, Right, Escape, Alt_L, Alt_R, Shift_L, Shift_R, Caps_Lock,
-                            Tab, Up, Down, Super_L, Super_R, Home, End, Page_Down, Page_Up,
-                        ]
-                        .into_iter(),
-                    );
-                    println!("{:?}", ek.keyval());
-                    if !excl.contains(&ek.keyval()) && !ENTRY.as_ref().unwrap().is_focus() {
-                        ENTRY.as_ref().unwrap().set_is_focus(true);
+                println!("{:?}", ek.keyval());
+                if !excl.contains(&ek.keyval()) && !ENTRY.as_ref().unwrap().is_focus() {
+                    ENTRY.as_ref().unwrap().set_is_focus(true);
+                }
+                Inhibit(false)
+            });
+            win.set_titlebar(Some(&header));
+
+            win.set_border_width(0);
+            // window.set_decorations(true).unwrap();
+            // window.set_always_on_top(true).unwrap();
+            // window.set_focus().unwrap();
+            window
+                .move_window(Position::BottomRight)
+                .expect("cannot move window");
+
+            if conf.hide_on_blur {
+                window.on_window_event(move |e| match e {
+                    WindowEvent::Focused(b) => {
+                        if !b {
+                            save_pos(&w_on_ev);
+                            w_on_ev.hide().unwrap();
+                        }
                     }
-                    Inhibit(false)
+                    _ => (),
                 });
-                win.set_titlebar(Some(&header));
+            }
+            app.global_shortcut_manager()
+                .register("ctrl+alt+c", move || {
+                    if w_on_shortcut.is_visible().unwrap() {
+                        save_pos(&w_on_shortcut);
+                        w_on_shortcut.hide().unwrap()
+                    } else {
+                        w_on_shortcut.set_always_on_top(true).unwrap();
+                        restore_pos(&w_on_shortcut);
+                        w_on_shortcut.show().unwrap();
+                    }
+                    // w_on_shortcut.set_focus().unwrap();
+                    // w_on_shortcut.set_always_on_top(true).unwrap();
+                })
+                .unwrap();
 
-                win.set_border_width(0);
-                // window.set_decorations(true).unwrap();
-                // window.set_always_on_top(true).unwrap();
-                // window.set_focus().unwrap();
-                window
-                    .move_window(Position::BottomRight)
-                    .expect("cannot move window");
+            let state: tauri::State<OffdictState> = app.state();
+            let v = state.0.clone();
+            unsafe {
+                state_ = Some(state.0.clone());
+            }
 
-                if conf.hide_on_blur {
-                    window.on_window_event(move |e| match e {
-                        WindowEvent::Focused(b) => {
-                            if !b {
-                                save_pos(&w_on_ev);
-                                w_on_ev.hide().unwrap();
-                            }
-                        }
-                        _ => (),
-                    });
-                }
-                app.global_shortcut_manager()
-                    .register("ctrl+alt+c", move || {
-                        if w_on_shortcut.is_visible().unwrap() {
-                            save_pos(&w_on_shortcut);
-                            w_on_shortcut.hide().unwrap()
-                        } else {
-                            w_on_shortcut.set_always_on_top(true).unwrap();
-                            restore_pos(&w_on_shortcut);
-                            w_on_shortcut.show().unwrap();
-                        }
-                        // w_on_shortcut.set_focus().unwrap();
-                        // w_on_shortcut.set_always_on_top(true).unwrap();
-                    })
-                    .unwrap();
+            let mut db = v.write().unwrap();
 
-                let state: tauri::State<OffdictState> = app.state();
-                let v = state.0.clone();
-                unsafe {
-                    state_ = Some(state.0.clone());
-                }
+            // *db = d;
 
-                let mut db = v.write().unwrap();
+            tauri::async_runtime::spawn(serve(v.clone()));
 
-                // *db = d;
+            let mut m = Master::new(Handler {
+                app: app.get_window("main").unwrap(),
+                clip: app.clipboard_manager(),
+                en_stemmer: Stemmer::create(Algorithm::English),
+            });
 
-                tauri::async_runtime::spawn(serve(v.clone()));
+            thread::spawn(move || {
+                println!("clipboard ..");
+                m.run().unwrap()
+            });
+            Ok(())
+        })
+        .manage(OffdictState(Arc::new(RwLock::new(d))))
+        .invoke_handler(tauri::generate_handler![input, import]);
 
-                let mut m = Master::new(Handler {
-                    app: app.get_window("main").unwrap(),
-                    clip: app.clipboard_manager(),
-                    en_stemmer: Stemmer::create(Algorithm::English),
-                });
-
-                thread::spawn(move || {
-                    println!("clipboard ..");
-                    m.run().unwrap()
-                });
-                Ok(())
-            })
-            .manage(OffdictState(Arc::new(RwLock::new(d))))
-            .invoke_handler(tauri::generate_handler![input, import]);
-
-        x.run(tauri::generate_context!())
-            .expect("error while running tauri application");
-    } else {
-        println!("Config not found in working directory");
-        panic!();
-    }
+    x.run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }
