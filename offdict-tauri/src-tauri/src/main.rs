@@ -4,27 +4,28 @@
 )]
 use clipboard_master::{CallbackResult, ClipboardHandler, Master};
 
-use gdkx11::gdk::ffi::GDK_CURRENT_TIME;
-use offdictd::{self, def_bin::WrapperDef, *};
-use rust_stemmers::{Algorithm, Stemmer};
-use std::{
-    borrow::Cow, collections::BTreeSet, env, fs, iter::FromIterator, path::PathBuf, sync::Arc,
-    sync::RwLock, thread, time::Instant,
-};
-use tauri::{
-    self, api::dialog, utils::debug_eprintln, ClipboardManager, GlobalShortcutManager, Manager,
-    PhysicalPosition, Window, WindowEvent,
-};
-use timed::timed;
-
+use gdkx11::gdk::{ffi::GDK_CURRENT_TIME, ModifierType};
 use gtk::{
     gdk,
     traits::{GtkWindowExt, WidgetExt},
     ApplicationWindow,
 };
 use gtk::{prelude::*, HeaderBar};
+// use lazy_regex;
+use lazy_regex::{lazy_regex, Lazy};
+use offdictd::{self, def_bin::WrapperDef, *};
+use rust_stemmers::{Algorithm, Stemmer};
 use std::io;
+use std::{
+    borrow::Cow, collections::BTreeSet, env, fs, iter::FromIterator, path::PathBuf, sync::Arc,
+    sync::RwLock, thread, time::Instant,
+};
+use tauri::{
+    self, api::dialog, regex::Regex, utils::debug_eprintln, ClipboardManager,
+    GlobalShortcutManager, Manager, PhysicalPosition, Window, WindowEvent,
+};
 use tauri_plugin_positioner::{Position, WindowExt};
+use timed::timed;
 
 struct Handler<T: ClipboardManager> {
     app: Window,
@@ -35,20 +36,22 @@ struct Handler<T: ClipboardManager> {
 use gtk::glib;
 
 static mut pos: Option<PhysicalPosition<i32>> = None;
+pub static re1: Lazy<Regex> = lazy_regex!(r"[;\[\]{}<>#@$%^&*/\\:]");
+pub static re2: Lazy<Regex> = lazy_regex!(r"[;\[\]{}<>#@$%^&*/\\:,.?!。，]");
 
 impl<T: ClipboardManager> ClipboardHandler for Handler<T> {
     fn on_clipboard_change(&mut self) -> CallbackResult {
         let k = self.clip.read_text().unwrap().unwrap_or_default();
         // Clean up raw clipboard content, do fuzzy search, skip if no result, and stem, repeat.
         // let r = self.en_stemmer.stem(cleanup_clipboard_input(&k));
-        if k.len() > 25 {
+        if denied_clip(&k) {
             return CallbackResult::Next;
         }
 
-        let r: Cow<str> = Cow::Owned(cleanup_clipboard_input(&k).to_owned());
+        let r: Cow<str> = Cow::Owned(cleanup_clipboard_input(k.clone()));
 
         println!("clip: {}", r.as_ref());
-        self.app.emit("clip", r.as_ref()).unwrap();
+        // self.app.emit("clip", r.as_ref()).unwrap();
         // self.app.unminimize().unwrap();
         // self.app.show().unwrap();
         // let win = self.app.gtk_window().unwrap();
@@ -57,11 +60,14 @@ impl<T: ClipboardManager> ClipboardHandler for Handler<T> {
         // if !self.app.is_visible().unwrap() {
         //     self.app.show().unwrap();
         // }
-        restore_pos(&self.app);
-        self.app.set_always_on_top(true).unwrap();
-        self.app.show().unwrap();
+        if onInput(&k, false) {
+            // doesn't pop up when no results
+            restore_pos(&self.app);
+            self.app.set_always_on_top(true).unwrap();
+            self.app.show().unwrap();
+        }
 
-        // doesnt really work on kde, only sets it glowy
+        // doesnt really work on kde, only sets it glowy zxcsaz
         // self.app.set_focus().expect("cannot focus window");
         // https://stackoverflow.com/questions/66510406/gtk-rs-how-to-update-view-from-another-thread
         glib::idle_add(move || unsafe {
@@ -78,8 +84,25 @@ impl<T: ClipboardManager> ClipboardHandler for Handler<T> {
     }
 }
 
-fn cleanup_clipboard_input(s: &str) -> &str {
-    s
+fn cleanup_clipboard_input(s: String) -> String {
+    let trimmed = s.trim().to_owned();
+    let removed = re2.replace_all(&trimmed, "");
+    removed.into_owned()
+}
+
+fn denied_clip(k: &str) -> bool {
+    k.len() > 25 || re1.is_match(&k)
+}
+
+#[test]
+fn test_clip() {
+    assert!(denied_clip("io::Error"));
+    assert!(!denied_clip("self.app.show"));
+    assert!(!denied_clip("Concretely,"));
+    assert_eq!(
+        cleanup_clipboard_input("   c,   ".to_owned()),
+        "c".to_owned()
+    );
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -250,7 +273,8 @@ struct set_input {
     extensive: bool,
 }
 
-fn onInput(s: &str, expensive: bool) {
+// has results ?
+fn onInput(s: &str, expensive: bool) -> bool {
     let db_ = unsafe { state_.as_ref().unwrap().read() };
 
     let db = db_.as_ref().unwrap();
@@ -266,15 +290,12 @@ fn onInput(s: &str, expensive: bool) {
     }
 
     if def_list.is_empty() {
-        d = db.search(s, 5, false);
-        def_list = offdictd::flatten_human(d);
-        unsafe {
-            w.as_ref().unwrap().emit("def_list", &def_list).unwrap();
-        }
+        false
     } else {
         unsafe {
             w.as_ref().unwrap().emit("def_list", &def_list).unwrap();
         }
+        true
     }
 }
 
@@ -321,7 +342,10 @@ fn main() {
                     .into_iter(),
                 );
                 println!("{:?}", ek.keyval());
-                if !excl.contains(&ek.keyval()) && !ENTRY.as_ref().unwrap().is_focus() {
+                if !excl.contains(&ek.keyval())
+                    && !ENTRY.as_ref().unwrap().is_focus()
+                    && ek.state().is_empty() // No modifier key present
+                {
                     ENTRY.as_ref().unwrap().set_is_focus(true);
                 }
                 Inhibit(false)

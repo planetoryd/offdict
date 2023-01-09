@@ -1,6 +1,6 @@
 [package]
 name = "offdict-tauri"
-version = "0.1.0"
+version = "0.2.0"
 description = "Offline dictionary"
 authors = ["planetor"]
 license = ""
@@ -25,6 +25,7 @@ tauri-plugin-positioner = "1.0.4"
 timed = "0.1.5"
 gtk = "0.15.5"
 gdkx11 = "0.15.5"
+lazy-regex = "2.3.1"
 
 [features]
 # by default Tauri runs in production mode

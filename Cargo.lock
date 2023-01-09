@@ -2267,12 +2267,13 @@ dependencies = [
 
 [[package]]
 name = "offdict-tauri"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clipboard-master",
  "config",
  "gdkx11",
  "gtk",
+ "lazy-regex",
  "offdictd",
  "rust-stemmers",
  "serde",
@@ -2285,7 +2286,7 @@ dependencies = [
 
 [[package]]
 name = "offdictd"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bincode",
  "bitmask-enum",

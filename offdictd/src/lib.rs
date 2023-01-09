@@ -565,7 +565,7 @@ pub fn tui(db_w: &mut offdict) -> Result<bool, Box<dyn Error>> {
             println!("built, {} words", c);
             Ok(true)
         }
-        None => Ok(true)
+        None => Ok(true),
     }
 }
 
@@ -580,17 +580,27 @@ pub struct Stat {
     words: u64,
 }
 
+#[derive(Deserialize, Default)]
+pub struct ApiOpts {
+    expensive: bool,
+}
+
 pub async fn serve(db_tok: Arc<RwLock<offdict>>) {
     let lookup = warp::get()
         .and(warp::path("q"))
         .and(warp::path::param::<String>())
-        .map(move |word: String| {
+        .and(
+            warp::query::<ApiOpts>()
+                .map(Some)
+                .or_else(|_| async { Ok::<(Option<ApiOpts>,), std::convert::Infallible>((None,)) }),
+        )
+        .map(move |word: String, opts: Option<ApiOpts>| {
             let db_r = db_tok.read().unwrap();
             let word = percent_encoding::percent_decode_str(&word)
                 .decode_utf8()
                 .unwrap()
                 .to_string();
-            warp::reply::json(&api_q(&db_r, &word))
+            warp::reply::json(&api_q(&db_r, &word, opts.unwrap_or_default()))
         });
 
     let stat = warp::get()
@@ -642,15 +652,13 @@ async fn readline() -> Result<String, Box<dyn Error>> {
     Ok(lines.next_line().await?.unwrap())
 }
 
-pub fn api_q(db: &offdict, query: &str) -> HashMap<String, Vec<Def>> {
+pub fn api_q(db: &offdict, query: &str, opts: ApiOpts) -> Vec<Def> {
     println!("\nq: {}", query);
-    let arr = db.search(&query, 30, true);
-    let mut m = HashMap::new();
-    for wr in arr {
-        m.insert(wr.word.clone(), wr.vec_human());
-    }
 
-    m
+    let mut arr = db.search(query, 30, opts.expensive);
+    let mut def_list = flatten_human(arr);
+
+    def_list
 }
 
 fn respond(line: &str, db: &offdict) -> Result<bool, String> {
