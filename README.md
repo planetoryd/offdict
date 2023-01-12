@@ -18,8 +18,6 @@ API:
 - `127.0.0.1:3030/q/some_word_to_lookup`
 - `/stat/`
 
-Then build the index `offdict build`
-
 ```sh
 apt install libxcb-shape0-dev libxcb-xfixes0-dev # required for building clipboard-master
 ```
@@ -33,7 +31,8 @@ apt install libxcb-shape0-dev libxcb-xfixes0-dev # required for building clipboa
 - It loads `config.json5` in the working directory. 
 - To import dictionaries
     1. Just grab a `data` folder from somewhere (might have vulnerability)
-    2. Import with `offdict yaml -p '<wildcard for files>.yaml' -s` (works for both CLI and GUI binaries)
+    2. or, import with `./offdict yaml -p '*.yaml'` (supports wildcard `*`)
+    3. Then build the index `./offdict build`
 
 ## notes 
 
