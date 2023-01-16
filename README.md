@@ -4,8 +4,8 @@ Totally offline performant dictionary, with prefix fuzzy autocompleting search, 
 
 - Linux only, currently
 
-<img src="./sc.png" width="50%">
-<img src="./dark.png" width="50%">
+<img src="./img/screenshot.png" width="50%">
+<img src="./img/screenshot-dark.png" width="50%">
 
 - A format I camp up with deliberately when cleaning up some dictionary files
     - [x] API server
@@ -17,8 +17,6 @@ I personally have some Chinese-English dictionary source files. I cleaned up the
 API: 
 - `127.0.0.1:3030/q/some_word_to_lookup`
 - `/stat/`
-
-Then build the index `offdict build`
 
 ```sh
 apt install libxcb-shape0-dev libxcb-xfixes0-dev # required for building clipboard-master
@@ -33,7 +31,8 @@ apt install libxcb-shape0-dev libxcb-xfixes0-dev # required for building clipboa
 - It loads `config.json5` in the working directory. 
 - To import dictionaries
     1. Just grab a `data` folder from somewhere (might have vulnerability)
-    2. Import with `offdict yaml -p '<wildcard for files>.yaml' -s` (works for both CLI and GUI binaries)
+    2. or, import with `./offdict yaml -p '*.yaml'` (supports wildcard `*`)
+    3. Then build the index `./offdict build`
 
 ## notes 
 
