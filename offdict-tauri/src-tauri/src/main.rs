@@ -344,7 +344,10 @@ fn main() {
                 println!("{:?}", ek.keyval());
                 if !excl.contains(&ek.keyval())
                     && !ENTRY.as_ref().unwrap().is_focus()
-                    && ek.state().is_empty() // No modifier key present
+                    && !ek
+                        .state()
+                        .intersects(ModifierType::CONTROL_MASK | ModifierType::SUPER_MASK)
+                // No modifier key present
                 {
                     ENTRY.as_ref().unwrap().set_is_focus(true);
                 }
