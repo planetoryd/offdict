@@ -374,7 +374,9 @@ fn main() {
                     _ => (),
                 });
             }
-            app.global_shortcut_manager()
+
+            match app
+                .global_shortcut_manager()
                 .register("ctrl+alt+c", move || {
                     if w_on_shortcut.is_visible().unwrap() {
                         save_pos(&w_on_shortcut);
@@ -386,8 +388,12 @@ fn main() {
                     }
                     // w_on_shortcut.set_focus().unwrap();
                     // w_on_shortcut.set_always_on_top(true).unwrap();
-                })
-                .unwrap();
+                }) {
+                Ok(x) => {}
+                Err(x) => {
+                    println!("cannot reg global shortcut {:?}", x)
+                }
+            }
 
             let state: tauri::State<OffdictState> = app.state();
             let v = state.0.clone();
