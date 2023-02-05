@@ -1,6 +1,6 @@
 ## Offline dictionary with open formats
 
-Totally offline performant dictionary, with prefix fuzzy autocompleting search, live, and clipboard watching.
+Totally offline performant dictionary, with prefix fuzzy autocompleting search, live, and clipboard watching (lookup by selection on Linux).
 
 - Linux only, currently
 
@@ -37,3 +37,7 @@ apt install libxcb-shape0-dev libxcb-xfixes0-dev # required for building clipboa
 ## notes 
 
 - faster fuzzy autocompletion algorithm. https://github.com/qinbill/IncNgTrie ?
+
+## Known issues
+
+- IBus seems to write into the PRIMARY of X11 (when I am using Wayland), which was intended to be user selection

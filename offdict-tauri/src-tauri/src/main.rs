@@ -30,6 +30,7 @@ use timed::timed;
 struct Handler<T: ClipboardManager> {
     app: Window,
     clip: T,
+    last: String,
     en_stemmer: Stemmer,
 }
 
@@ -40,8 +41,17 @@ pub static re1: Lazy<Regex> = lazy_regex!(r"[;\[\]{}<>#@$%^&*/\\:]");
 pub static re2: Lazy<Regex> = lazy_regex!(r"[;\[\]{}<>#@$%^&*/\\:,.?!。，]");
 
 impl<T: ClipboardManager> ClipboardHandler for Handler<T> {
-    fn on_clipboard_change(&mut self) -> CallbackResult {
-        let k = self.clip.read_text().unwrap().unwrap_or_default();
+    fn on_clipboard_change(&mut self, mut k: String) -> CallbackResult {
+        println!("clip_m: {}", k);
+
+        if k.is_empty()  {
+            k = self.clip.read_text().unwrap().unwrap_or_default();
+        }
+
+        if k == self.last {
+            return CallbackResult::Next;
+        }
+        self.last = k.clone();
         // Clean up raw clipboard content, do fuzzy search, skip if no result, and stem, repeat.
         // let r = self.en_stemmer.stem(cleanup_clipboard_input(&k));
         if denied_clip(&k) {
@@ -51,6 +61,10 @@ impl<T: ClipboardManager> ClipboardHandler for Handler<T> {
         let r: Cow<str> = Cow::Owned(cleanup_clipboard_input(k.clone()));
 
         println!("clip: {}", r.as_ref());
+
+        if r.is_empty() {
+            return CallbackResult::Next;
+        }
         // self.app.emit("clip", r.as_ref()).unwrap();
         // self.app.unminimize().unwrap();
         // self.app.show().unwrap();
@@ -307,6 +321,11 @@ fn main() {
     if !offdictd::tui(&mut d).unwrap() {
         return;
     }
+
+    if cfg!(target_os = "linux") {
+
+    } 
+
     let x = tauri::Builder::default()
         .setup(move |app| {
             println!("{}", env::current_dir().unwrap().to_str().unwrap());
@@ -411,6 +430,7 @@ fn main() {
                 app: app.get_window("main").unwrap(),
                 clip: app.clipboard_manager(),
                 en_stemmer: Stemmer::create(Algorithm::English),
+                last: "".to_owned(),
             });
 
             thread::spawn(move || {
