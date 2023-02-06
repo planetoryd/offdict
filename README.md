@@ -41,3 +41,7 @@ apt install libxcb-shape0-dev libxcb-xfixes0-dev # required for building clipboa
 ## Known issues
 
 - IBus seems to write into the PRIMARY of X11 (when I am using Wayland), which was intended to be user selection
+- Wayland can't set window on top https://github.com/tauri-apps/tauri/issues/3117 You have to set it manually (temporarily or permanently through system settings)
+- Wayland global shortcut https://github.com/tauri-apps/tauri/issues/3578
+- [ ] Clipboard should be monitored separate from primary. Sometimes `primary` is not respected. We have to fall back to clipboard, explicit copying.
+- IME doesnt work in the input on Wayland 

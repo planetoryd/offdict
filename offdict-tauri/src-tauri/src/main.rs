@@ -44,7 +44,7 @@ impl<T: ClipboardManager> ClipboardHandler for Handler<T> {
     fn on_clipboard_change(&mut self, mut k: String) -> CallbackResult {
         println!("clip_m: {}", k);
 
-        if k.is_empty()  {
+        if k.is_empty() {
             k = self.clip.read_text().unwrap().unwrap_or_default();
         }
 
@@ -66,19 +66,21 @@ impl<T: ClipboardManager> ClipboardHandler for Handler<T> {
             return CallbackResult::Next;
         }
         // self.app.emit("clip", r.as_ref()).unwrap();
-        // self.app.unminimize().unwrap();
+
         // self.app.show().unwrap();
-        // let win = self.app.gtk_window().unwrap();
+
         // win.animation
-        // win.present();
+
         // if !self.app.is_visible().unwrap() {
         //     self.app.show().unwrap();
         // }
         if onInput(&k, false) {
             // doesn't pop up when no results
             restore_pos(&self.app);
-            self.app.set_always_on_top(true).unwrap();
             self.app.show().unwrap();
+            // let win = self.app.gtk_window().unwrap();
+            // win.present();
+            self.app.set_always_on_top(true).unwrap();
         }
 
         // doesnt really work on kde, only sets it glowy zxcsaz
@@ -322,9 +324,7 @@ fn main() {
         return;
     }
 
-    if cfg!(target_os = "linux") {
-
-    } 
+    if cfg!(target_os = "linux") {}
 
     let x = tauri::Builder::default()
         .setup(move |app| {
