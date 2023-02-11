@@ -19,6 +19,7 @@ API:
 - `/stat/`
 
 ```sh
+git clone --recurse-submodules <url>
 apt install libxcb-shape0-dev libxcb-xfixes0-dev # required for building clipboard-master
 ```
 
