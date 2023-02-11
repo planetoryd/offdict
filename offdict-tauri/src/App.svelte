@@ -24,7 +24,7 @@
   let currentWord = undefined;
   let currentIndex = -1;
   let inputheader = false;
-  let inputWord;
+  let inputWord: string;
   let extensive;
   let def_list = []; // Final list of defs
   let show_not_found = true; // clip input was supposed to show explicit error
@@ -38,13 +38,17 @@
 
   listen("error", (e) => {});
   listen("clip", (e) => {
-    inputWord = e.payload;
+    inputWord = e.payload as string;
     show_not_found = true;
     welcome = false;
     onInput();
   });
   listen("set_input", (e: any) => {
     welcome = false;
+    window.scrollTo({
+      top: 0,
+      behavior: "auto",
+    });
     inputWord = e.payload.inputWord;
     extensive = e.payload.extensive;
   });
@@ -92,27 +96,26 @@
   });
 
   listen("def_list", (e) => {
-    def_list = e.payload as [any];
-    welcome = false;
-    console.log(def_list);
-    if (def_list.length === 0) {
-      notfound = true;
-    } else {
+    if (inputWord.trim() === "") {
+      def_list = [];
+      welcome = true;
       notfound = false;
+    } else {
+      def_list = e.payload as [any];
+      console.log(def_list);
+      if (def_list.length === 0) {
+        notfound = true;
+      } else {
+        notfound = false;
+      }
     }
   });
 
   async function onInput() {
-    // candidates = ;
-    let qucik_res: [any] = await invoke("input", {
+    await invoke("input", {
       query: inputWord,
       expensive: false,
     });
-
-    // console.log(candidates);
-    // toast.success("Always at the bottom.", {
-    //   position: "bottom-center",
-    // });
   }
 
   function scroll(goPrev = false) {
@@ -298,7 +301,7 @@
         </div>
         <div class="card-body">
           {#if def}
-            <Def {def} root={true}/>
+            <Def {def} root={true} />
           {/if}
           <!-- <pre class="code">
             <code>{JSON.stringify(def, null, 2)}</code>

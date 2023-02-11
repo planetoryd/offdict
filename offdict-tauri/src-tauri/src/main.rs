@@ -47,12 +47,15 @@ impl<T: ClipboardManager> ClipboardHandler for Handler<T> {
     fn on_clipboard_change(&mut self, mut x1: Option<String>, explicit: bool) -> CallbackResult {
         let k: String;
         println!("clip change: {}", explicit);
-        if x1.is_none() && explicit {
-            k = self.clip.read_text().unwrap().unwrap_or_default();
-        } else if x1.is_some() {
+        if x1.is_none() {
+            if explicit {
+                k = self.clip.read_text().unwrap().unwrap_or_default();
+            } else {
+                println!("clip is none");
+                return CallbackResult::Next;
+            }
+        } else{
             k = x1.unwrap();
-        } else {
-            return CallbackResult::Next;
         }
         unsafe {
             if !explicit && EntryFocus {
@@ -71,7 +74,7 @@ impl<T: ClipboardManager> ClipboardHandler for Handler<T> {
 
         let r: Cow<str> = Cow::Owned(cleanup_clipboard_input(k.clone()));
 
-        println!("clip: {}", r.as_ref());
+        println!("clip cleaned: {}", r.as_ref());
 
         if r.is_empty() {
             return CallbackResult::Next;
@@ -111,6 +114,8 @@ fn test_clip() {
     assert!(denied_clip("io::Error"));
     assert!(!denied_clip("self.app.show"));
     assert!(!denied_clip("Concretely,"));
+    assert!(!denied_clip("呃"));
+    assert!(!denied_clip("呃🙃"));
     assert_eq!(
         cleanup_clipboard_input("   c,   ".to_owned()),
         "c".to_owned()
@@ -310,15 +315,10 @@ fn onInput(s: &str, expensive: bool) -> bool {
         };
         w.as_ref().unwrap().emit("set_input", si).unwrap();
     }
-
-    if def_list.is_empty() {
-        false
-    } else {
-        unsafe {
-            w.as_ref().unwrap().emit("def_list", &def_list).unwrap();
-        }
-        true
+    unsafe {
+        w.as_ref().unwrap().emit("def_list", &def_list).unwrap();
     }
+    def_list.is_empty()
 }
 
 fn main() {
