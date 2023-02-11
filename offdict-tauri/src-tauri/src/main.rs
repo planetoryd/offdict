@@ -36,18 +36,29 @@ struct Handler<T: ClipboardManager> {
 
 use gtk::glib;
 
+static mut pendingText: String = String::new();
 static mut pos: Option<PhysicalPosition<i32>> = None;
 pub static re1: Lazy<Regex> = lazy_regex!(r"[;\[\]{}<>#@$%^&*/\\:]");
 pub static re2: Lazy<Regex> = lazy_regex!(r"[;\[\]{}<>#@$%^&*/\\:,.?!。，]");
 
 impl<T: ClipboardManager> ClipboardHandler for Handler<T> {
-    fn on_clipboard_change(&mut self, mut k: String) -> CallbackResult {
-        println!("clip_m: {}", k);
-
-        if k.is_empty() {
+    // TODO: Don't use X11 if on Wayland.
+    // Selection watching only works on XWayland apps on wayland
+    fn on_clipboard_change(&mut self, mut x1: Option<String>, explicit: bool) -> CallbackResult {
+        let k: String;
+        println!("clip change: {}", explicit);
+        if x1.is_none() && explicit {
             k = self.clip.read_text().unwrap().unwrap_or_default();
+        } else if x1.is_some() {
+            k = x1.unwrap();
+        } else {
+            return CallbackResult::Next;
         }
-
+        unsafe {
+            if !explicit && EntryFocus {
+                return CallbackResult::Next;
+            }
+        }
         if k == self.last {
             return CallbackResult::Next;
         }
@@ -65,31 +76,16 @@ impl<T: ClipboardManager> ClipboardHandler for Handler<T> {
         if r.is_empty() {
             return CallbackResult::Next;
         }
-        // self.app.emit("clip", r.as_ref()).unwrap();
-
-        // self.app.show().unwrap();
-
-        // win.animation
-
-        // if !self.app.is_visible().unwrap() {
-        //     self.app.show().unwrap();
-        // }
-        if onInput(&k, false) {
-            // doesn't pop up when no results
-            restore_pos(&self.app);
-            self.app.show().unwrap();
-            // let win = self.app.gtk_window().unwrap();
-            // win.present();
-            self.app.set_always_on_top(true).unwrap();
+        unsafe {
+            pendingText = r.into_owned();
         }
 
-        // doesnt really work on kde, only sets it glowy zxcsaz
-        // self.app.set_focus().expect("cannot focus window");
-        // https://stackoverflow.com/questions/66510406/gtk-rs-how-to-update-view-from-another-thread
-        glib::idle_add(move || unsafe {
-            ENTRY.as_ref().unwrap().set_text(&r);
-            glib::source::Continue(false)
-        });
+        if self.app.is_visible().unwrap() {
+            glib::idle_add(|| unsafe {
+                ENTRY.as_ref().unwrap().set_text(&pendingText);
+                glib::source::Continue(false)
+            });
+        }
 
         CallbackResult::Next
     }
@@ -187,6 +183,7 @@ fn import<'a>(state: tauri::State<'a, OffdictState>) {
 }
 
 static mut ENTRY: Option<gtk::Entry> = None;
+static mut EntryFocus: bool = false;
 static mut w: Option<Window> = None;
 static mut state_: Option<Arc<InnerState>> = None;
 
@@ -259,6 +256,14 @@ fn input_header(win: Window) -> HeaderBar {
         ENTRY.as_ref().unwrap()
     };
     bo.pack_start(en, true, true, 0);
+    en.connect_focus_in_event(|_, _| unsafe {
+        EntryFocus = true;
+        Inhibit(false)
+    });
+    en.connect_focus_out_event(|_, _| unsafe {
+        EntryFocus = false;
+        Inhibit(false)
+    });
     en.connect_changed(|e| {
         dbg!(e.text());
         onInput(e.text().as_str(), false);
@@ -297,6 +302,7 @@ fn onInput(s: &str, expensive: bool) -> bool {
 
     let mut d = db.search(s, 5, expensive);
     let mut def_list = offdictd::flatten_human(d);
+
     unsafe {
         let si = set_input {
             inputWord: s.to_owned(),
@@ -324,7 +330,9 @@ fn main() {
         return;
     }
 
-    if cfg!(target_os = "linux") {}
+    if cfg!(target_os = "linux") {
+        env::set_var("GDK_BACKEND", "x11"); // TODO: Wayland when it stop sucking
+    }
 
     let x = tauri::Builder::default()
         .setup(move |app| {
@@ -349,6 +357,7 @@ fn main() {
                 &provider,
                 gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
             );
+
             // win.add(&header);
             win.connect_key_press_event(|wi, ek| unsafe {
                 use gdk::keys::constants::*;

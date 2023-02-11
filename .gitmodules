@@ -1,3 +1,6 @@
 [submodule "offdict-tauri/clipboard-master"]
 	path = offdict-tauri/clipboard-master
 	url = https://github.com/planetoryd/clipboard-master
+[submodule "offdict-tauri/x11-clipboard"]
+	path = offdict-tauri/x11-clipboard
+	url = https://github.com/planetoryd/x11-clipboard

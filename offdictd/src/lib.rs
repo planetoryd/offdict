@@ -147,7 +147,6 @@ impl offdict {
         }
     }
 
-    #[timed]
     pub fn retrieve(&self, cand: candidate) -> Option<DefItemWrapped> {
         let mut items: BTreeMap<String, def_bin::Def> = BTreeMap::new();
         for res in self.db.prefix_iterator(DBKey::from(cand.as_str(), "")) {

@@ -25,7 +25,9 @@ apt install libxcb-shape0-dev libxcb-xfixes0-dev # required for building clipboa
 ## Usage
 
 - Input anywhere to start live search.
-- Copy anything and it would pop up.
+- Copy/select anything to look up.
+    1. Tap `ctrl+alt+c` or it won't show up
+    2. Select the text, or in some cases, copy it. (explanation below)
 - Press ⬅️ or ➡️ for scrolling
 - Tap `Enter` to perform an extensive & expensive search
 - It loads `config.json5` in the working directory. 
@@ -43,5 +45,21 @@ apt install libxcb-shape0-dev libxcb-xfixes0-dev # required for building clipboa
 - IBus seems to write into the PRIMARY of X11 (when I am using Wayland), which was intended to be user selection
 - Wayland can't set window on top https://github.com/tauri-apps/tauri/issues/3117 You have to set it manually (temporarily or permanently through system settings)
 - Wayland global shortcut https://github.com/tauri-apps/tauri/issues/3578
-- [ ] Clipboard should be monitored separate from primary. Sometimes `primary` is not respected. We have to fall back to clipboard, explicit copying.
 - IME doesnt work in the input on Wayland 
+- Cannot watch clipboard on wayland.
+
+For now GDK_BACKEND=x11 is set by hardcode
+
+- Lookup by selection only works in XWayland windows.
+- IBus still messes with Primary (only in windows named 'Chromium Clipboard', like, it doesnt happen in firefox) 
+    - [x] workaround: Ignore Chromium Clipboards 
+    - The change also propagates to Wayland primary
+- Global shortcut `ctrl+alt+c` works
+
+## Todo
+
+- Complete support for 'lookup by copy' and 'lookup by selection'
+    - Wayland. Upstream dependecies are not yet working
+    - https://github.com/bugaevc/wl-clipboard works
+- Lookup by cursor pointing ?
+    - Embed it in other applications 
