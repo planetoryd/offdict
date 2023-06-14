@@ -1,0 +1,523 @@
+- definitions:
+    - CN: (不受他人干涉的个人的) 私生活; 隐私 (权)
+      examples:
+        - CN: 隐私 (权) 的侵犯
+          EN: (an) invasion of ~
+        - CN: 在内心深处
+          EN: in the ~ of one's thoughts
+        - CN: 你不可打扰他人的私生活
+          EN: You must not disturb a person's ~.
+      t1: "1"
+    - CN: 秘密, 私下
+      examples:
+        - CN: 我私下告诉你这件事
+          EN: I tell you this in ~.
+      t1: "2"
+    - CN: 隐居, 独处
+      examples:
+        - CN: 过隐居生活
+          EN: live in ~
+      t1: "3"
+  etymology:
+    - 《private 的名词》
+  index: 90001
+  pronunciation:
+    - "`praɪvəsɪ"
+    - ˈprivəsi
+    - ˈprai-
+  title: pri.va.cy
+  type: 不可数名词
+  word: privacy
+- etymology:
+    - 《源自拉丁文“拉开”的意思》
+  groups:
+    - definitions:
+        - CN: (无比较级、最高级)私人的, (属于) 个人的, 私人用的
+          examples:
+            - CN: 自用车
+              EN: a ~ car
+            - CN: 便门, 私人出入口
+              EN: a ~ door
+            - CN: 民宅
+              EN: a ~ house
+            - CN: 私法
+              EN: ~ law
+            - CN: 私室, 私人房间
+              EN: a ~ room
+            - CN: 私生活
+              EN: one's ~ life
+            - CN: 私人秘书
+              EN: a ~ secretary
+            - CN: 依我个人的意见
+              EN: in my ~ opinion
+            - CN: 以个人身份[资格]
+              EN: in a ~ capacity
+          related:
+            - (←→ public)
+          t1: "1"
+        - CN: 秘密的, 守密的
+          examples:
+            - CN: 请守住这个秘密
+              EN: Please keep this ~.
+            - CN: 他对我吐露了心中的大秘密 [隐私]
+              EN: He confided his most ~ secrets to me.
+          t1: "2"
+        - CN: (无比较级、最高级)
+          related:
+            - (←→ public)
+          t1: "3"
+        - CN: 私立的, 民间的, 私营的, 私有的
+          examples:
+            - CN: 私人企业
+              EN: ~ enterprise
+            - CN: ((口语))eye] 私家侦探
+              EN: a ~ detective [investigator,
+            - CN: 民营铁路
+              EN: a ~ railway
+            - CN: 私立学校
+              EN: a ~ school
+          t1: "3"
+          t2: a.
+        - CN: 非正式的, 不公开的
+          examples:
+            - CN: 手记, 手书
+              EN: ~ papers
+            - CN: 预展 [非公开展览]
+              EN: a ~ view
+            - CN: 不公开的婚礼
+              EN: a ~wedding
+            - CN: ‘告示’禁止闲杂人进入; 非请莫进
+              EN: P~.
+          t1: "3"
+          t2: b.
+        - CN: (无比较级、最高级)无官职的, 平民的
+          examples:
+            - a ~ citizen (没有官职的) 平民
+          t1: "4"
+          t2: b.
+        - CN: ; 人; 喜欢独处的, 不好社交活动的
+          t1: "5"
+          t2: a.
+        - CN: ; 场所等; 不引人注目的, 隐密的, 安静的
+          t1: "5"
+          t2: b.
+        - CN: 秘密的
+          examples:
+            - CN: 秘密的事, 私事
+              EN: ~ affairs
+            - CN: 私人信件
+              EN: a ~ letter
+          t1: "6"
+          t2: b.
+      type: 形容词
+    - definitions:
+        - CN: ‘陆军’列兵
+          t1: "1"
+        - CN: "[~s]((俚))阴部 (private parts)"
+          examples:
+            - CN: 秘密地, 不公开地
+              EN: in private
+          related:
+            - (←→ in public)
+          t1: "2"
+      type: 可数名词
+  index: 90002
+  pronunciation:
+    - "`praɪvɪt"
+    - ˈpraivit
+  title: pri.vate
+  word: private
+- definitions:
+    - CN: ((俚))私家侦探
+  index: 90003
+  title: private eye
+  word: private eye
+- definitions:
+    - CN: ‘缩’Pfc, Pfc. 一等兵
+  etymology:
+    - ((美国陆军或陆战队))
+  index: 90004
+  title: private first class
+  word: private first class
+- definitions:
+    - CN: ((英)) (仅供熟人及经过介绍的人投宿之) 特定旅馆
+  index: 90005
+  title: private hotel
+  type: 可数名词
+  word: private hotel
+- definitions:
+    - CN: 射法
+  index: 90006
+  title: private law
+  word: private law
+- definitions:
+    - CN: ((英))非内阁阁员之普通议员
+  index: 90007
+  title: private member
+  type: 可数名词
+  word: private member
+- definitions:
+    - CN: pl.((委婉语))阴部
+  index: 90008
+  title: private parts
+  type: 名词
+  word: private parts
+- definitions:
+    - CN: 列兵, 二等兵
+  index: 90009
+  title: private soldier
+  type: 可数名词
+  word: private soldier
+- definitions:
+    - CN: （主要指记者和报纸）发表社论，作出主观评论
+      EN: >-
+        If someone editorializes, they express their opinion about something
+        rather than just stating facts; mainly used in contexts where you are
+        talking about journalists and newspapers.
+      examples:
+        - CN: 其他报纸已经发表了社论，谴责捷克政府对这一独立的个体草率下定论。
+          EN: >-
+            Other papers have editorialized, criticizing the Czech government
+            for rushing to judgment on this individual.
+      info: 【语法信息】：V
+      type: "VERB\t动词"
+  index: 10000
+  tip:
+    - in BRIT, also use 英国英语亦用 editorialise
+  word: editorialize
+- definitions:
+    - CN: 编辑职位;编辑工作
+      EN: >-
+        The editorship of a newspaper or magazine is the position of its editor,
+        or his or her work as its editor.
+      examples:
+        - CN: 在他担任编辑期间，《经济家》开始定期刊登体育报道。
+          EN: >-
+            Under his editorship, the Economist has introduced regular sports
+            coverage.
+      info: 【搭配模式】：oft poss N
+      type: "N-VAR\t可变名词"
+  index: 10001
+  word: editorship
+- definitions:
+    - CN: （常因可能具有冒犯性而）删除，删节
+      EN: >-
+        If you edit something out of a book or film, you remove it, often
+        because it might be offensive to some people.
+      examples:
+        - CN: 电影的最终版本会剪掉他的声音。
+          EN: His voice will be edited out of the final film...
+        - CN: 她再次删掉了那句台词。
+          EN: She edited that line out again.
+      info: 【语法信息】：V P n (not pron) 【语法信息】：V n P
+      type: "PHRASAL VERB\t短语动词"
+  index: 10002
+  word: edit out
+- definitions:
+    - CN: 指父母。
+      examples:
+        - 元本高明《琵琶记·伯喈夫妇上路回乡》：“女萝松柏望相依，况景入桑榆。他椿庭萱室齐倾弃，怎不想家山桃李？”
+        - 参见“椿萱”。
+  index: 160004
+  word: 椿庭萱室
+- definitions:
+    - CN: 指父母。
+      examples:
+        - 元本高明《琵琶记·伯喈五娘相会》：“书，我只为你其中自有黄金屋，却教我撇却椿庭萱草堂。还思想，休休，毕竟是文章误我，我误爹娘。”
+        - 参见“椿萱”。
+  index: 160005
+  word: 椿庭萱草堂
+- definitions:
+    - CN: 大椿的生命期限。借指很长的期限。
+      examples:
+        - 《云笈七签》卷九八：“寻宗须臾顷，万龄乃一朝。椿期会足衰，劫往岂足辽。”
+        - 参见“椿”。
+  index: 160006
+  word: 椿期
+- definitions:
+    - CN: "[用以强调] 你们自己 [本身]"
+      t1: "1"
+    - examples:
+        - CN: 你们自己做了那件事
+          EN: You ~ did it.=You did it ~.
+      t1: "1"
+      t2: a.
+    - CN: "[用 and ~ 代替 you]"
+      examples:
+        - CN: 你父母和你们去过那里吗 ?
+          EN: Did your parents and ~ go there ?.
+      related:
+        - (→ myself 1 b {语法})
+      t1: "1"
+      t2: b.
+    - CN: "[用以代替 you; 置于 as, like, than 之后]"
+      examples:
+        - CN: 像你们这样的年轻人必须工作
+          EN: Young people like ~ must work.
+      t1: "1"
+      t2: c.
+    - CN: "[反身用法]你们自己"
+      t1: "2"
+      t2: c.
+    - examples:
+        - CN: 你们不可以喝得过量
+          EN: You must not overdrink ~.
+      related:
+        - (→ myself 2 a)
+      t1: "2"
+      t2: a.
+    - examples:
+        - CN: 你们必须认识你们自己
+          EN: You must know ~.
+      t1: "2"
+      t2: b.
+    - examples:
+        - CN: 请你们保重 (自己)
+          EN: Please take care of ~.
+      t1: "2"
+      t2: c.
+    - CN: 平常的你们, 正常的你们
+      examples:
+        - CN: 你们今天不太对劲, 你们今天有点儿失常
+          EN: You aren't ~ today.
+      t1: "3"
+      t2: c.
+  index: 131514
+  pronunciation:
+    - jur`sɛlvz
+    - jɚ-
+    - jɔ:ˈselvz
+  title: your.selves
+  type: 代名词
+  word: yourselves
+- groups:
+    - definitions:
+        - CN: 狩猎…, 猎取, 猎捕
+          examples:
+            - CN: 猎捕 (狮、虎等) 大猎物
+              EN: ~ big game
+            - CN: 猎捕狐狸
+              EN: ~ the fox
+          related:
+            - (→hunting 【说明】)
+          t1: "1"
+        - CN: 使用 ; 马、猎犬等; 狩猎
+          examples:
+            - CN: 使用一群 (四、五十只) 猎犬猎捕 (狐狸)
+              EN: ~ a pack of hounds
+          t1: "2"
+          t2: a.
+        - CN: (带领猎犬) 在 ; 某个地区; 狩猎
+          examples:
+            - CN: 在森林 [原野] 狩猎
+              EN: ~ a forest [the fields]
+          t1: "2"
+          t2: b.
+        - CN: 搜索…, 追捕; 追踪, 寻找
+          examples:
+            - CN: 找寻线索
+              EN: ~ a clue
+            - CN: 找工作
+              EN: ~ a job
+            - CN: 他正被警方追缉((是通缉犯))
+              EN: He is being ~ed by the police.
+          t1: "3"
+          t2: a.
+        - CN: "[为了找寻…而]  (到处) 搜索; 场所; [for]"
+          examples:
+            - CN: 他在房间到处找寻遗失的文件
+              EN: He ~ed the room for the missing papers.
+          t1: "3"
+          t2: b.
+        - CN: 逐出 [赶走] …
+          examples:
+            - CN: 我把那只狗赶走了 [赶出花园]
+              EN: I ~ed the dog away [out of the garden].
+          t1: "4"
+          t2: b.
+      type: 及物动词
+    - definitions:
+        - CN: 狩猎
+          examples:
+            - CN: 出外打猎
+              EN: go (out) ~ing
+          t1: "1"
+          t2: a.
+        - CN: ((英))猎捕狐狸
+          t1: "1"
+          t2: b.
+        - CN: (到处) 搜索, 找寻[…][in, through]
+          examples:
+            - CN: 我摸索著口袋找 (车) 票
+              EN: I ~ed in my pocket for the ticket.
+            - CN: 他搜遍抽屉寻找戒指
+              EN: He ~ed through the drawers to find the ring.
+          t1: "2"
+          t2: a.
+        - CN: 搜寻[…][for, after]
+          examples:
+            - CN: 找寻线索 [廉价品]
+              EN: ~ for clues [bargains]
+            - CN: 探求知识
+              EN: ~ after knowledge
+            - hunt down
+            - CN: 穷追…, 追捕
+              EN: hunt down
+            - CN: 警方追捕强盗
+              EN: The police ~ed down the robber.
+            - hunt out
+            - CN: (1) = hunt down
+              EN: hunt out
+          t1: "2"
+          t2: b.
+        - EN: (2) = hunt up
+          t1: "2"
+          t2: b.
+        - CN: (3) 狩猎; 某场所; (至猎物被猎光了为止)
+          examples:
+            - CN: 这个森林的猎物被狩猎殆尽
+              EN: The forest is ~ed out.
+            - hunt up
+            - CN: 搜寻 ; 隐匿的东西等; , 搜查, 搜出, 找出
+              EN: hunt up
+            - CN: 找寻旧记录
+              EN: ~ up old records
+          t1: "2"
+          t2: b.
+      type: 不及物动词
+    - definitions:
+        - CN: "[常构成复合字]狩猎"
+          examples:
+            - CN: 猎熊
+              EN: a bear-hunt
+            - CN: 猎捕
+              EN: have a ~
+            - CN: 去狩猎
+              EN: go on a ~
+          related:
+            - → foxhunt
+          t1: "1"
+        - CN: ((英))
+          t1: "2"
+        - CN: 猎狐
+          t1: "2"
+          t2: a.
+        - CN: 猎狐地区; 狩猎区
+          t1: "2"
+          t2: b.
+        - CN: 猎狐队; 狩猎队[会]
+          t1: "2"
+          t2: c.
+        - CN: 追踪; 探索[for]
+          examples:
+            - CN: ﹍ 搜寻…
+              EN: have a [be on the] ~ for
+          t1: "3"
+          t2: c.
+      type: 可数名词
+  index: 55796
+  pronunciation:
+    - hʌnt
+  word: hunt
+- word: vasoactive peptide
+  definitions:
+    - CN: 血管活性肽
+      examples: []
+  index: 1000723
+- word: vaso-active substance
+  definitions:
+    - CN: 血管活性物质
+      examples: []
+  index: 1000724
+- word: vasobral solution
+  definitions:
+    - CN: 活血素口服液
+      examples: []
+  index: 1000725
+- word: vasoconstricting
+  definitions:
+    - type: adj.
+      CN: 血管收缩的
+      examples: []
+  index: 1000726
+- word: vasoconstriction
+  definitions:
+    - type: n.
+      CN: 血管收缩
+      examples: []
+  index: 1000727
+- definitions:
+    - etymology:
+        - ((制成腌橄榄等))
+      groups:
+        - definitions:
+            - EN: (C)
+              t1: "1"
+            - CN: (又作olive tree) ‘植物’橄榄树
+              related:
+                - (cf. olive branch)
+              t1: "1"
+              t2: a.
+            - CN: 橄榄
+              t1: "1"
+              t2: b.
+            - CN: (U)橄榄色, 淡绿色
+              t1: "2"
+              t2: b.
+          type: 名词
+        - definitions:
+            - CN: 橄榄色的
+          type: 形容词
+      pronunciation:
+        - "`ɑlɪv"
+        - ˈɔliv
+      title: ol.ive
+    - definitions:
+        - CN: 奥丽芙 (女子名)
+      etymology:
+        - 源自拉丁
+        - "涵意 : 和平者"
+        - "同义字 : Olivia"
+      pronunciation:
+        - ˈɑlɪv
+      title: Olive
+  index: 80001
+  word: Olive
+- definitions:
+    - CN: "[用单数] (象徵和平、和解的) 橄榄枝"
+      examples:
+        - CN: 提议讲和 [和解]
+          EN: hold out an [the] ~
+  index: 80002
+  title: olive branch
+  type: 名词
+  word: olive branch
+- definitions:
+    - CN: 形容事物精妙高超，非人力所能为。
+      examples:
+        - 元郝经《赵州石桥》诗：“鬼功神力古未有，地维欲绝还钩连。”
+  index: 330001
+  word: 鬼功神力
+- definitions:
+    - CN: 边远地区。
+      examples:
+        - 《文选·班固＜典引＞》：“仁风翔乎海表，威灵行乎鬼区。”
+        - 蔡邕注：“鬼区，绝远之区也。”一说即鬼方。
+        - 李善注：“鬼区，即鬼方也。”
+        - 《三国志·魏志·文帝纪》“以肃承天命”裴松之注引汉刘艾《献帝传》：“声教被四海，仁风扇鬼区。”
+        - 唐柳宗元《鼓吹铙歌·铁山碎》：“百蛮破胆，边氓苏；威武辉耀，明鬼区。”
+    - CN: 鬼集居之区域。
+      examples:
+        - 宋洪迈《夷坚丙志·芝山鬼》：“芝山在城北一里，左右前后皆墓域，僧寺两庑，菆柩相望，风雪阴雨，辄闻啾啾之声，盖鬼区也。”
+  index: 330002
+  word: 鬼区
+- definitions:
+    - CN: 鬼兵中之士卒。
+      examples:
+        - 清纪昀《阅微草堂笔记·滦阳消夏录一》：“为此牌仰沿路把守关隘鬼卒，即将该魂验实放行，毋得勒索留滞，致干未便。”
+        - 鲁迅《呐喊·社戏》：“那老旦嘴边插着两个点火的纸捻子，旁边有一个鬼卒。”
+    - CN: 汉张鲁五斗米道初级道徒的称谓。
+      examples:
+        - 《后汉书·刘焉传》：“鲁遂自号‘师君’。其来学者，初名为‘鬼卒’，后号‘祭酒’。”
+  index: 330003
+  word: 鬼卒

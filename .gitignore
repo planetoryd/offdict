@@ -1,0 +1,17 @@
+/target
+rocks_t
+trie
+trie*
+node_modules
+Cargo.lock
+yarn.lock
+.vscode
+Cargo.lock
+data
+out.yaml
+dict.*.yaml
+prob.*.yaml
+prob.yaml
+note.md
+dicts.db
+offdict-tauri/src-tauri/config.json5
