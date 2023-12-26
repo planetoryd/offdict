@@ -6,7 +6,7 @@ use std::{
 
 use tokio::{self};
 
-use offdictd::{def_bin::WrapperDef, *};
+use offdictd::{def_bin::WrapperDef, fst_index::fstmmap, *};
 
 fn main() -> Result<()> {
     let conf = crate::config::get_config();
@@ -14,7 +14,7 @@ fn main() -> Result<()> {
     let mut _db_path = PathBuf::from(conf.data_path.clone());
     let db_path = _db_path.to_str().unwrap();
 
-    let db = Arc::new(RwLock::new(offdict::open_db(db_path.to_owned())));
+    let db = Arc::new(RwLock::new(offdict::<fstmmap>::open_db(db_path.to_owned())));
 
     println!("config: {:?}", &conf);
     let _db_a = db.clone();
@@ -22,8 +22,8 @@ fn main() -> Result<()> {
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     rt.block_on(async {
-        tokio::join!(serve(db.clone()), repl(db.clone()));
-    });
+        tokio::try_join!(serve(db.clone()), repl(db.clone()))
+    })?;
 
     Ok(())
 }

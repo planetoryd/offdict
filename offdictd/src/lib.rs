@@ -1,6 +1,7 @@
 #![allow(unused_variables)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
+#![feature(async_closure)]
 
 use anyhow::bail;
 pub use anyhow::Result;
@@ -49,14 +50,18 @@ pub struct stat {
 
 pub type candidate = String;
 pub type candidates = Vec<candidate>;
-pub struct offdict {
+pub struct offdict<index: Indexer> {
     db: rocks,
-    fst_set: Option<fst::Set<Mmap>>,
+    fst_set: Option<index>,
     data_path: PathBuf,
-    pub set_input: Option<fn(&str, bool) -> bool>,
+    pub set_input: Option<fn(&str, bool) -> Result<bool>>,
 }
 
-trait Indexer {}
+pub trait Indexer {
+    const FILE_NAME: &'static str;
+    fn load_file(pp: &Path) -> Self;
+    fn query(&self, query: &str, expensive: bool) -> Result<candidates>;
+}
 
 #[test]
 pub fn test_guess_name() {
@@ -84,19 +89,13 @@ pub fn get_dictname_from_path(path: String) -> Option<String> {
     }
 }
 
-impl offdict {
+impl<Ix: Indexer> offdict<Ix> {
     pub fn serialize<T: Serialize>(v: &T) -> Result<Vec<u8>, Box<bincode::ErrorKind>> {
         bincode::serialize(v)
     }
 
     pub fn deserialize<'a, T: Deserialize<'a>>(v: &'a [u8]) -> Result<T, Box<bincode::ErrorKind>> {
         bincode::deserialize(v)
-    }
-
-    pub fn load_fst(pp: PathBuf) -> fst::Set<Mmap> {
-        let mmap = unsafe { Mmap::map(&File::open(pp).unwrap()).unwrap() };
-        let set = fst::Set::new(mmap).unwrap();
-        set
     }
 
     pub fn open_db(path: String) -> Self {
@@ -123,7 +122,7 @@ impl offdict {
         if pp.exists() {
             offdict {
                 db,
-                fst_set: Some(offdict::load_fst(pp)),
+                fst_set: Some(Ix::load_file(&pp)),
                 data_path: p2,
                 set_input: None,
             }
@@ -141,11 +140,11 @@ impl offdict {
         self.db.drop_cf("default").unwrap();
     }
 
-    pub fn candidates(&self, query: &str, expensive: bool, sub: bool) -> candidates {
-        if self.fst_set.is_some() {
-            suggest::suggest(self.fst_set.as_ref().unwrap(), query, expensive, sub).unwrap()
+    pub fn candidates(&self, query: &str, expensive: bool, sub: bool) -> Result<candidates> {
+        if let Some(index) = &self.fst_set {
+            index.query(query, expensive)
         } else {
-            vec![]
+            Ok(Default::default())
         }
     }
 
@@ -168,8 +167,8 @@ impl offdict {
     }
 
     #[timed]
-    pub fn search(&self, query: &str, num: usize, expensive: bool) -> Vec<DefItemWrapped> {
-        let mut cands = self.candidates(query, expensive, false);
+    pub fn search(&self, query: &str, num: usize, expensive: bool) -> Result<Vec<DefItemWrapped>> {
+        let mut cands = self.candidates(query, expensive, false)?;
         cands.truncate(num);
         let mut res: Vec<DefItemWrapped> = vec![];
 
@@ -178,7 +177,7 @@ impl offdict {
             // debug_println!("{}", self.schema.to_json(&retrieved_doc));
         }
 
-        res
+        Ok(res)
     }
 
     pub fn export_all_yaml(&self, path: &str) {
@@ -255,7 +254,7 @@ impl offdict {
     #[timed]
     pub fn build_fst_from_db(&mut self) -> usize {
         let mut px = self.data_path.clone();
-        px.push("fst");
+        px.push(Ix::FILE_NAME);
         let mut w = BufWriter::new(File::create(&px).unwrap());
         let mut bu = SetBuilder::new(w).unwrap();
 
@@ -278,7 +277,7 @@ impl offdict {
         });
 
         bu.finish().unwrap();
-        self.fst_set = Some(Self::load_fst(px));
+        self.fst_set = Some(Ix::load_file(&px));
 
         c
     }
@@ -510,7 +509,7 @@ struct Cli {
 }
 
 // continue running ?
-pub fn tui(db_w: &mut offdict) -> Result<bool> {
+pub fn tui<Ix: Indexer>(db_w: &mut offdict<Ix>) -> Result<bool> {
     let args = Cli::parse();
 
     match args.command {
@@ -542,7 +541,7 @@ pub fn tui(db_w: &mut offdict) -> Result<bool> {
             Ok(false)
         }
         Some(Commands::lookup { query }) => {
-            for d in db_w.search(&query, 1, true) {
+            for d in db_w.search(&query, 1, true)? {
                 let list: Vec<Def> = d.vec_human();
                 println!("{}", serde_yaml::to_string::<Vec<Def>>(&list)?)
             }
@@ -583,7 +582,9 @@ pub struct SetRes {
     defs: bool, // true means result is empty
 }
 
-pub async fn serve(db_tok: Arc<RwLock<offdict>>) {
+pub async fn serve<Ix: Indexer + Send + Sync + 'static>(
+    db_tok: Arc<RwLock<offdict<Ix>>>,
+) -> Result<()> {
     let db_t1 = db_tok.clone();
     let lookup = warp::get()
         .and(warp::path("q"))
@@ -599,7 +600,7 @@ pub async fn serve(db_tok: Arc<RwLock<offdict>>) {
                 .decode_utf8()
                 .unwrap()
                 .to_string();
-            warp::reply::json(&api_q(&db_r, &word, opts.unwrap_or_default()))
+            warp::reply::json(&api_q(&db_r, &word, opts.unwrap_or_default()).unwrap())
         });
 
     let stat = warp::get()
@@ -622,17 +623,17 @@ pub async fn serve(db_tok: Arc<RwLock<offdict>>) {
                 .to_string();
             let mut r: SetRes = SetRes { defs: false };
             if db_r.set_input.is_some() {
-                r.defs = db_r.set_input.unwrap()(&word, false);
+                r.defs = db_r.set_input.unwrap()(&word, false).unwrap();
             }
             warp::reply::json(&r)
         });
 
-    warp::serve(lookup.or(stat).or(set))
+    Ok(warp::serve(lookup.or(stat).or(set))
         .run(([0, 0, 0, 0], 3030)) // XXX: this has to be hard coded, who cares
-        .await
+        .await)
 }
 
-pub async fn repl(db_: Arc<RwLock<offdict>>) {
+pub async fn repl<Ix: Indexer>(db_: Arc<RwLock<offdict<Ix>>>) -> Result<()> {
     loop {
         let li = readline().await.unwrap();
         let li = li.trim();
@@ -644,7 +645,7 @@ pub async fn repl(db_: Arc<RwLock<offdict>>) {
             match respond(li, db.borrow()) {
                 Ok(quit) => {
                     if quit {
-                        break;
+                        break Ok(());
                     }
                 }
                 Err(err) => {
@@ -672,17 +673,17 @@ async fn readline() -> Result<String> {
     Ok(lines.next_line().await?.unwrap())
 }
 
-pub fn api_q(db: &offdict, query: &str, opts: ApiOpts) -> Vec<Def> {
+pub fn api_q(db: &offdict<impl Indexer>, query: &str, opts: ApiOpts) -> Result<Vec<Def>> {
     println!("\nq: {}", query);
 
-    let mut arr = db.search(query, 30, opts.expensive);
+    let mut arr = db.search(query, 30, opts.expensive)?;
     let mut def_list = flatten_human(arr);
 
-    def_list
+    Ok(def_list)
 }
 
-fn respond(line: &str, db: &offdict) -> Result<bool, String> {
-    let mut arr = db.search(line, 2, true);
+fn respond(line: &str, db: &offdict<impl Indexer>) -> Result<bool> {
+    let mut arr = db.search(line, 2, true)?;
 
     println!("{} results", arr.len());
     arr.truncate(2);
@@ -700,6 +701,6 @@ pub use def::*;
 pub mod def;
 mod tests;
 
-pub mod suggest;
+pub mod fst_index;
 
 pub mod def_bin;

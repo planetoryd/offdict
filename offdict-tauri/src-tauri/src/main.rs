@@ -118,7 +118,7 @@ fn test_clip() {
     );
 }
 
-pub type InnerState = RwLock<offdict>;
+pub type InnerState = RwLock<offdict<offdictd::fst_index::fstmmap>>;
 
 pub struct OffdictState(pub Arc<InnerState>);
 
@@ -131,7 +131,7 @@ fn input<'a>(
     query: &'a str,
     expensive: bool,
 ) -> Result<(), &'static str> {
-    onInput(query, expensive);
+    on_input(query, expensive);
     Ok(())
 }
 
@@ -273,12 +273,12 @@ fn input_header(win: Window) -> HeaderBar {
     });
     en.connect_changed(|e| {
         dbg!(e.text());
-        onInput(e.text().as_str(), false);
+        on_input(e.text().as_str(), false);
     });
     en.connect_key_press_event(move |e, k| {
         if k.keyval() == gdk::keys::constants::Return {
             println!("expensive search");
-            onInput(e.text().as_str(), true);
+            on_input(e.text().as_str(), true);
         } else if k.keyval() == gdk::keys::constants::Escape {
             save_pos(&win);
             win.hide().unwrap();
@@ -302,12 +302,12 @@ struct set_input {
 }
 
 // has results ?
-fn onInput(s: &str, expensive: bool) -> bool {
+fn on_input(s: &str, expensive: bool) -> Result<bool> {
     let db_ = unsafe { state_.as_ref().unwrap().read() };
 
     let db = db_.as_ref().unwrap();
 
-    let mut d = db.search(s, 5, expensive);
+    let mut d = db.search(s, 5, expensive)?;
     let mut def_list = offdictd::flatten_human(d);
 
     unsafe {
@@ -320,7 +320,7 @@ fn onInput(s: &str, expensive: bool) -> bool {
     unsafe {
         w.as_ref().unwrap().emit("def_list", &def_list).unwrap();
     }
-    def_list.is_empty()
+    Ok(def_list.is_empty())
 }
 
 fn main() {
@@ -331,7 +331,7 @@ fn main() {
     println!("{:?}", conf);
     let mut d = offdict::open_db(db_path.to_str().unwrap().to_owned());
 
-    d.set_input = Some(onInput);
+    d.set_input = Some(on_input);
     if !offdictd::tui(&mut d).unwrap() {
         return;
     }
