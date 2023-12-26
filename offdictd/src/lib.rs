@@ -1,4 +1,6 @@
 #![allow(unused_variables)]
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
 
 use fst::SetBuilder;
 pub use serde::{Deserialize, Serialize};
@@ -24,9 +26,6 @@ pub use std::error::Error;
 pub use std::fs::{create_dir_all, File};
 pub use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-
-// use lazy_static;
-// use regex::Regex;
 
 use timed::timed;
 
@@ -55,8 +54,6 @@ pub struct offdict {
     pub set_input: Option<fn(&str, bool) -> bool>,
 }
 
-#[test]
-pub fn rocks() {}
 
 #[test]
 pub fn test_guess_name() {

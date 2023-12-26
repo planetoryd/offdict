@@ -7,7 +7,6 @@ use std::{
 use tokio::{self};
 
 use offdictd::{def_bin::WrapperDef, *};
-/// Simple program to greet a person
 
 fn main() -> Result<(), Box<dyn Error>> {
     let conf = crate::config::get_config();

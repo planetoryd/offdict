@@ -41,8 +41,7 @@ impl Def {
     }
 }
 
-#[allow(non_camel_case_types)]
-#[allow(non_snake_case)]
+
 #[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Default)]
 pub struct Def {
     pub definitions: Option<Vec<Def>>,
@@ -65,7 +64,7 @@ pub struct Def {
     pub related: Option<Vec<String>>,
     pub dictName: Option<String>,
 }
-#[allow(non_camel_case_types)]
+
 #[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Default)]
 pub enum shorthand<O> {
     obj(O),
@@ -75,25 +74,23 @@ pub enum shorthand<O> {
     none,
 }
 
-#[allow(non_camel_case_types)]
+
 pub type example = shorthand<example_obj>;
 
-#[allow(non_camel_case_types)]
+
 pub type pronunciation = shorthand<String>;
 
-#[allow(non_snake_case)]
-#[allow(non_camel_case_types)]
+
 #[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct example_obj {
     CN: Option<String>,
     EN: Option<String>,
 }
 
-#[allow(non_camel_case_types)]
+
 pub type tip = shorthand<tip_obj>;
 
-#[allow(non_snake_case)]
-#[allow(non_camel_case_types)]
+
 #[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct tip_obj {
     CN: Option<String>,

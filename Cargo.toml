@@ -1,5 +1,6 @@
 [workspace]
-resolver = "2"                                                  # wgpu-hal requires it
+resolver = "2"                                    # wgpu-hal requires it
 members = ["offdictd", "offdict-tauri/src-tauri"]
 [profile.release]
-strip="debuginfo"
+strip = true
+lto = true

@@ -18,8 +18,6 @@ pub use std::io::{Read, Write};
 
 use crate::def_bin;
 
-#[allow(non_camel_case_types)]
-#[allow(non_snake_case)]
 #[serde_with::skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Def {
@@ -78,7 +76,6 @@ pub fn default_as_false() -> bool {
     false
 }
 
-#[allow(non_camel_case_types)]
 #[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Default)]
 #[serde_with::skip_serializing_none]
 #[serde(untagged)]
@@ -90,14 +87,10 @@ pub enum shorthand<O> {
     none,
 }
 
-#[allow(non_camel_case_types)]
 pub type example = shorthand<example_obj>;
 
-#[allow(non_camel_case_types)]
 pub type pronunciation = shorthand<String>;
 
-#[allow(non_snake_case)]
-#[allow(non_camel_case_types)]
 #[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Clone)]
 #[serde_with::skip_serializing_none]
 pub struct example_obj {
@@ -105,11 +98,8 @@ pub struct example_obj {
     EN: Option<String>,
 }
 
-#[allow(non_camel_case_types)]
 pub type tip = shorthand<tip_obj>;
 
-#[allow(non_snake_case)]
-#[allow(non_camel_case_types)]
 #[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Clone)]
 #[serde_with::skip_serializing_none]
 pub struct tip_obj {
