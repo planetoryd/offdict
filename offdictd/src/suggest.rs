@@ -16,6 +16,7 @@ use regex_automata::dfa::dense::{self, Config};
 use timed;
 
 use bitmask_enum::bitmask;
+use crate::*;
 
 #[bitmask]
 #[derive(Default)]
@@ -46,7 +47,7 @@ fn collect_to_map<A: Automaton>(
     mut factor: Flags,
     query: &str,
     cap: i32,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<()> {
     let mut curr = 0;
     while let Some(key) = stream.next() {
         let w = String::from_utf8(key.to_vec())?;
@@ -112,7 +113,7 @@ pub fn suggest<D: AsRef<[u8]>>(
     q: &str,
     expensive: bool,
     sub: bool,
-) -> Result<Vec<String>, Box<dyn Error>> {
+) -> Result<Vec<String>> {
     let len = q.chars().count();
     let mut map: BTreeMap<String, Metrics> = BTreeMap::new();
 

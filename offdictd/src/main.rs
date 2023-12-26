@@ -8,7 +8,7 @@ use tokio::{self};
 
 use offdictd::{def_bin::WrapperDef, *};
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<()> {
     let conf = crate::config::get_config();
 
     let mut _db_path = PathBuf::from(conf.data_path.clone());

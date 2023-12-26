@@ -2,6 +2,8 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
+use anyhow::bail;
+pub use anyhow::Result;
 use fst::SetBuilder;
 pub use serde::{Deserialize, Serialize};
 
@@ -54,6 +56,7 @@ pub struct offdict {
     pub set_input: Option<fn(&str, bool) -> bool>,
 }
 
+trait Indexer {}
 
 #[test]
 pub fn test_guess_name() {
@@ -193,7 +196,7 @@ impl offdict {
         serde_yaml::to_writer(file, &flat).unwrap();
     }
 
-    pub fn import_glob(&mut self, path: &str) -> Result<(), Box<dyn Error>> {
+    pub fn import_glob(&mut self, path: &str) -> Result<()> {
         let options = glob::MatchOptions {
             case_sensitive: false,
             ..Default::default()
@@ -209,7 +212,7 @@ impl offdict {
                 println!("import {} as {}", entr, s.as_str());
                 pendin.push((entr.to_owned(), s));
             } else {
-                return Err(format!("Error getting dict name for {}", entr).into());
+                bail!("Error getting dict name for {}", entr)
             }
         }
 
@@ -220,7 +223,7 @@ impl offdict {
         Ok(())
     }
 
-    pub fn import_from_file(&mut self, path: &str, dict_name: &str) -> Result<(), Box<dyn Error>> {
+    pub fn import_from_file(&mut self, path: &str, dict_name: &str) -> Result<()> {
         let ds = Def::load_yaml(&path, &dict_name)?;
         debug_println!("loaded {} Defs", ds.len());
         self.import_defs(ds)?;
@@ -229,14 +232,14 @@ impl offdict {
     }
 
     #[timed]
-    pub fn import_defs(&mut self, defs: Vec<DefItem>) -> Result<(), Box<dyn Error>> {
+    pub fn import_defs(&mut self, defs: Vec<DefItem>) -> Result<()> {
         let ws: Vec<DefItemWrapped> = defs.into_iter().map(|d| d.into()).collect();
         self.import_wrapped(ws);
         Ok(())
     }
 
     pub fn import_wrapped(&mut self, wrapped: Vec<DefItemWrapped>) {
-        for mut incoming_w in wrapped {
+        for incoming_w in wrapped {
             for (k, v) in incoming_w.items {
                 self.db.put(v.key(), Self::serialize(&v).unwrap()).unwrap();
             }
@@ -281,14 +284,6 @@ impl offdict {
     }
 }
 
-// Database, network, import/export, edit, how
-// Checkout a dictionary for editing.
-// Export as bincoded bytes
-// Sync data from Locutus and update key/values
-// or, build database on Locutus
-// Locutus and the index might need different data structures, which is more ideal.
-// so maybe not.
-
 // Result of yaml checking
 #[derive(Serialize)]
 struct DefCheck {
@@ -297,7 +292,7 @@ struct DefCheck {
 }
 
 impl<'a> AnyDef<'a, Self> for Def {
-    fn load_yaml(path: &str, name: &str) -> Result<Vec<DefItem>, Box<dyn Error>> {
+    fn load_yaml(path: &str, name: &str) -> Result<Vec<DefItem>> {
         let file = File::open(path).expect("Unable to open file");
         let mut yaml_defs: Vec<Def> = serde_yaml::from_reader(file)?;
         for def in yaml_defs.iter_mut() {
@@ -416,7 +411,7 @@ impl<'a> AnyDef<'a, Self> for Def {
 
 // To import DefNew from
 pub trait AnyDef<'a, T: Deserialize<'a>> {
-    fn load_yaml(path: &str, name: &str) -> Result<Vec<DefItem>, Box<dyn Error>>;
+    fn load_yaml(path: &str, name: &str) -> Result<Vec<DefItem>>;
 
     fn check_yaml(path: &str, save: bool);
     fn check_yaml_defs(imported_Defs: Vec<Def>, save: bool, unused: BTreeSet<String>, path: &str);
@@ -515,7 +510,7 @@ struct Cli {
 }
 
 // continue running ?
-pub fn tui(db_w: &mut offdict) -> Result<bool, Box<dyn Error>> {
+pub fn tui(db_w: &mut offdict) -> Result<bool> {
     let args = Cli::parse();
 
     match args.command {
@@ -633,7 +628,7 @@ pub async fn serve(db_tok: Arc<RwLock<offdict>>) {
         });
 
     warp::serve(lookup.or(stat).or(set))
-        .run(([0, 0, 0, 0], 3030)) // XXX: this has to be hard coded, who cares 
+        .run(([0, 0, 0, 0], 3030)) // XXX: this has to be hard coded, who cares
         .await
 }
 
@@ -665,7 +660,7 @@ pub async fn repl(db_: Arc<RwLock<offdict>>) {
         }
     }
 }
-async fn readline() -> Result<String, Box<dyn Error>> {
+async fn readline() -> Result<String> {
     let mut out = tokio::io::stdout();
     out.write_all(b"@ ").await?;
     out.flush().await?;

@@ -257,15 +257,15 @@ impl Def {
 
 use lazy_regex::regex;
 
-#[test]
-fn cleanup() {
-    let piece = include_str!("../fixtures/prob.yaml");
-    let mut d: Vec<Def> = serde_yaml::from_str(piece).unwrap();
-    let n: Vec<Def> = d.into_iter().map(|x| x.cleanup()).collect();
+// #[test]
+// fn cleanup() {
+//     let piece = include_str!("../fixtures/prob.yaml");
+//     let mut d: Vec<Def> = serde_yaml::from_str(piece).unwrap();
+//     let n: Vec<Def> = d.into_iter().map(|x| x.cleanup()).collect();
 
-    let f = File::create("./fixtures/prob.x.yaml").unwrap();
-    serde_yaml::to_writer(f, &n).unwrap();
-}
+//     let f = File::create("./fixtures/prob.x.yaml").unwrap();
+//     serde_yaml::to_writer(f, &n).unwrap();
+// }
 
 fn cleanup_value(v: &mut serde_yaml::Value) {
     match v {
