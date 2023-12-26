@@ -61,6 +61,7 @@ pub trait Indexer {
     const FILE_NAME: &'static str;
     fn load_file(pp: &Path) -> Self;
     fn query(&self, query: &str, expensive: bool) -> Result<candidates>;
+    fn build_all(words: impl IntoIterator<Item = String>, pp: &Path) -> Result<()>;
 }
 
 #[test]
@@ -252,34 +253,28 @@ impl<Ix: Indexer> offdict<Ix> {
     }
 
     #[timed]
-    pub fn build_fst_from_db(&mut self) -> usize {
+    pub fn build_fst_from_db(&mut self) -> Result<usize> {
         let mut px = self.data_path.clone();
         px.push(Ix::FILE_NAME);
-        let mut w = BufWriter::new(File::create(&px).unwrap());
-        let mut bu = SetBuilder::new(w).unwrap();
 
-        let mut c = 0 as usize;
         let mut set: BTreeSet<String> = BTreeSet::new();
+        let c = set.len();
         for res in self.db.iterator(rocksdb::IteratorMode::Start) {
             if res.is_ok() {
                 let (k, v) = res.unwrap();
                 let word = String::from_utf8(DBKey::slice(&k).0.to_vec()).unwrap();
                 set.insert(word);
-                c += 1;
             }
         }
 
         debug_println!("word set len {}", set.len());
         let mut sorted: Vec<String> = set.into_iter().collect();
         sorted.sort();
-        sorted.into_iter().for_each(|k| {
-            bu.insert(k).unwrap();
-        });
 
-        bu.finish().unwrap();
+        Ix::build_all(sorted, &px)?;
         self.fst_set = Some(Ix::load_file(&px));
 
-        c
+        Ok(c)
     }
 }
 
@@ -553,7 +548,7 @@ pub fn tui<Ix: Indexer>(db_w: &mut offdict<Ix>) -> Result<bool> {
             Ok(false)
         }
         Some(Commands::build {}) => {
-            let c = db_w.build_fst_from_db();
+            let c = db_w.build_fst_from_db()?;
             println!("built, {} words", c);
             Ok(true)
         }

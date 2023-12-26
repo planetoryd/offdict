@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"                                    # wgpu-hal requires it
-members = ["offdictd", "offdict-tauri/src-tauri"]
+members = ["offdictd", "offdict-tauri/src-tauri", "strprox"]
 [profile.release]
 strip = true
 lto = true

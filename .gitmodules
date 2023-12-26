@@ -4,3 +4,6 @@
 [submodule "offdict-tauri/x11-clipboard"]
 	path = offdict-tauri/x11-clipboard
 	url = https://github.com/planetoryd/x11-clipboard
+[submodule "strprox"]
+	path = strprox
+	url = https://github.com/planetoryd/strprox

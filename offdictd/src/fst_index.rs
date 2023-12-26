@@ -173,4 +173,13 @@ impl Indexer for fstmmap {
         });
         Ok(ve.into_iter().map(|x| x.0).collect())
     }
+    fn build_all(sorted: impl IntoIterator<Item = String>, px: &Path) -> Result<()> {
+        let mut w = BufWriter::new(File::create(px).unwrap());
+        let mut bu = SetBuilder::new(&mut w).unwrap();
+        sorted.into_iter().for_each(|k| {
+            bu.insert(k).unwrap();
+        });
+        bu.finish()?;
+        Ok(())
+    }
 }
