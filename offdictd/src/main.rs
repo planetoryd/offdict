@@ -14,7 +14,7 @@ fn main() -> Result<()> {
     let mut _db_path = PathBuf::from(conf.data_path.clone());
     let db_path = _db_path.to_str().unwrap();
 
-    let db = Arc::new(RwLock::new(offdict::<fstmmap>::open_db(db_path.to_owned())));
+    let db = Arc::new(RwLock::new(offdict::<fstmmap>::open_db(db_path.to_owned())?));
 
     println!("config: {:?}", &conf);
     let _db_a = db.clone();
