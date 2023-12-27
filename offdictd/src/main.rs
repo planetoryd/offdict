@@ -12,20 +12,27 @@ use topk::Strprox;
 fn main() -> Result<()> {
     let conf = crate::config::get_config();
 
-    let mut _db_path = PathBuf::from(conf.data_path.clone());
-    let db_path = _db_path.to_str().unwrap();
-    let db = Arc::new(RwLock::new(offdict::<Strprox>::open_db(
-        db_path.to_owned(),
-    )?));
-
+    let db_path = PathBuf::from(conf.data_path.clone());
+    let mut db = offdict::<Strprox>::open_db(db_path)?;
     println!("config: {:?}", &conf);
-    let _db_a = db.clone();
-    tui(db.write().unwrap().borrow_mut()).unwrap();
+
+    process_cmd(&mut db)?;
+    unsafe {
+        DB = Some(db);
+    }
+    let db = unsafe { DB.as_mut() }.unwrap();
     let rt = tokio::runtime::Runtime::new().unwrap();
 
-    rt.block_on(async { tokio::try_join!(serve(db.clone()), repl(db.clone())) })?;
+    rt.block_on(async move {
+        db.set_brw = Some(bincode::deserialize(&db.set.as_ref().unwrap().file)?);
+        tokio::try_join!(serve(db), repl(db))
+    })?;
 
     Ok(())
 }
+
+pub type IxTy = Strprox;
+
+static mut DB: Option<offdict<IxTy>> = None;
 
 // fn api_lookup(res:Vec<Def>)

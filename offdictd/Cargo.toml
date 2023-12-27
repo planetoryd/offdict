@@ -33,3 +33,4 @@ rocksdb = "0.21"
 bitmask-enum = "2.1.0"
 anyhow = "1.0.76"
 strprox = { path = "../strprox", features = ["serde"] }
+derive-new = "0.6.0"

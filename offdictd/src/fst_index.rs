@@ -112,12 +112,13 @@ pub type fstmmap = fstset<Mmap>;
 
 impl Indexer for fstmmap {
     const FILE_NAME: &'static str = "fst";
+    type Param = bool;
     fn load_file(pp: &Path) -> Result<Self> {
         let mmap = unsafe { Mmap::map(&File::open(pp).unwrap()).unwrap() };
         let set = fst::Set::new(mmap).unwrap();
         Ok(set)
     }
-    fn query(&self, q: &str, expensive: bool) -> Result<candidates> {
+    fn query(&self, q: &str, expensive: Self::Param, brw: &Self::Brw) -> Result<candidates> {
         let set = self;
         let len = q.chars().count();
         let mut map: BTreeMap<String, Metrics> = BTreeMap::new();

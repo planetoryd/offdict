@@ -3,15 +3,18 @@
 #![allow(non_snake_case)]
 #![feature(async_closure)]
 #![feature(anonymous_lifetime_in_impl_trait)]
+#![feature(associated_type_defaults)]
 
 use anyhow::bail;
 pub use anyhow::Result;
 use fst::SetBuilder;
+use fst_index::fstmmap;
 pub use serde::{Deserialize, Serialize};
 
 pub use serde_yaml::{self};
 
 pub use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use topk::Strprox;
 
 use std::borrow::Borrow;
 use std::collections::{self, BTreeMap, BTreeSet, HashMap};
@@ -26,6 +29,7 @@ use std::{self, fs, vec};
 // use bson::{self, Array, Serializer};
 pub use std::cmp::min;
 
+pub use derive_new::new;
 pub use std::error::Error;
 
 pub use std::fs::{create_dir_all, File};
@@ -54,24 +58,20 @@ pub struct stat {
 pub type candidate = String;
 pub type candidates = Vec<candidate>;
 pub struct offdict<index: Indexer> {
-    db: rocks,
-    fst_set: Option<index>,
-    data_path: PathBuf,
+    db: Arc<RwLock<rocks>>,
+    pub set: Option<index>,
+    pub set_brw: Option<index::Brw>,
+    dirpath: PathBuf,
     pub set_input: Option<fn(&str, bool) -> Result<bool>>,
 }
 
 pub trait Indexer: Sized + 'static {
     const FILE_NAME: &'static str;
+    type Param = ();
+    type Brw: Send + Sync = ();
     fn load_file(pp: &Path) -> Result<Self>;
-    fn query(&self, query: &str, expensive: bool) -> Result<candidates>;
+    fn query(&self, query: &str, para: Self::Param, brw: &Self::Brw) -> Result<candidates>;
     fn build_all(words: impl IntoIterator<Item = String>, pp: &Path) -> Result<()>;
-}
-
-pub trait Init {
-    /// The caller who owns the data shall init it.
-    fn init(&'static mut self) -> Result<()> {
-        Ok(())
-    }
 }
 
 #[test]
@@ -100,13 +100,35 @@ pub fn get_dictname_from_path(path: String) -> Option<String> {
     }
 }
 
-impl<Ix: Indexer + Init> Init for offdict<Ix> {
-    fn init(&'static mut self) -> Result<()> {
-        if let Some(ref mut f) = self.fst_set {
-            f.init()
-        } else {
-            Ok(())
+pub trait Diverge {
+    type Ix;
+    fn search(&self, query: &str, num: usize, expensive: bool) -> Result<Vec<DefItemWrapped>>;
+}
+
+impl Diverge for offdict<fstmmap> {
+    type Ix = fstmmap;
+    #[timed]
+    fn search(&self, query: &str, num: usize, expensive: bool) -> Result<Vec<DefItemWrapped>> {
+        let mut cands = self.candidates(query, expensive)?;
+        cands.truncate(num);
+        let mut res: Vec<DefItemWrapped> = vec![];
+        for s in cands {
+            res.push(self.retrieve(s).unwrap());
         }
+        Ok(res)
+    }
+}
+
+impl Diverge for offdict<Strprox> {
+    type Ix = Strprox;
+    #[timed]
+    fn search(&self, query: &str, num: usize, _: bool) -> Result<Vec<DefItemWrapped>> {
+        let cands = self.candidates(query, TopkParam::new(num))?;
+        let mut res: Vec<DefItemWrapped> = vec![];
+        for s in cands {
+            res.push(self.retrieve(s).unwrap());
+        }
+        Ok(res)
     }
 }
 
@@ -119,15 +141,11 @@ impl<Ix: Indexer> offdict<Ix> {
         bincode::deserialize(v)
     }
 
-    pub fn open_db(path: String) -> Result<Self> {
+    pub fn open_db(path: PathBuf) -> Result<Self> {
         let db;
-        let mut pp = PathBuf::from(path);
-        let p2 = pp.clone();
-        if !pp.is_dir() {
-            create_dir_all(&pp).unwrap();
+        if !path.is_dir() {
+            create_dir_all(&path).unwrap();
         }
-        pp.push("dicts.db");
-        let n = pp.to_str().unwrap();
 
         let mut opts = Options::default();
         opts.create_if_missing(true);
@@ -136,22 +154,23 @@ impl<Ix: Indexer> offdict<Ix> {
         tableopts.set_index_type(rocksdb::BlockBasedIndexType::HashSearch);
         opts.set_block_based_table_factory(&tableopts);
 
-        db = rocks::open(&opts, n).unwrap();
-        pp.pop();
-        pp.push("fst");
-        let mut od = if pp.exists() {
+        db = Arc::new(rocks::open(&opts, path.join("dicts.db")).unwrap().into());
+        let idx = path.join(Ix::FILE_NAME);
+        let od = if idx.exists() {
             offdict {
                 db,
-                fst_set: Some(Ix::load_file(&pp)?),
-                data_path: p2,
+                set: Some(Ix::load_file(&idx)?),
+                dirpath: path,
                 set_input: None,
+                set_brw: None,
             }
         } else {
             offdict {
                 db,
-                fst_set: None,
-                data_path: p2,
+                set: None,
+                dirpath: path,
                 set_input: None,
+                set_brw: None,
             }
         };
 
@@ -159,12 +178,12 @@ impl<Ix: Indexer> offdict<Ix> {
     }
 
     pub fn reset_db(&mut self) {
-        self.db.drop_cf("default").unwrap();
+        self.db.write().unwrap().drop_cf("default").unwrap();
     }
 
-    pub fn candidates(&self, query: &str, expensive: bool, sub: bool) -> Result<candidates> {
-        if let Some(index) = &self.fst_set {
-            index.query(query, expensive)
+    pub fn candidates(&self, query: &str, param: Ix::Param) -> Result<candidates> {
+        if let Some(index) = &self.set {
+            index.query(query, param, self.set_brw.as_ref().unwrap())
         } else {
             Ok(Default::default())
         }
@@ -172,7 +191,12 @@ impl<Ix: Indexer> offdict<Ix> {
 
     pub fn retrieve(&self, cand: candidate) -> Option<DefItemWrapped> {
         let mut items: BTreeMap<String, def_bin::Def> = BTreeMap::new();
-        for res in self.db.prefix_iterator(DBKey::from(cand.as_str(), "")) {
+        for res in self
+            .db
+            .read()
+            .unwrap()
+            .prefix_iterator(DBKey::from(cand.as_str(), ""))
+        {
             if res.is_ok() {
                 let (k, v) = res.unwrap();
                 items.insert(
@@ -188,25 +212,16 @@ impl<Ix: Indexer> offdict<Ix> {
         }
     }
 
-    #[timed]
-    pub fn search(&self, query: &str, num: usize, expensive: bool) -> Result<Vec<DefItemWrapped>> {
-        let mut cands = self.candidates(query, expensive, false)?;
-        cands.truncate(num);
-        let mut res: Vec<DefItemWrapped> = vec![];
-
-        for s in cands {
-            res.push(self.retrieve(s).unwrap());
-            // debug_println!("{}", self.schema.to_json(&retrieved_doc));
-        }
-
-        Ok(res)
-    }
-
     pub fn export_all_yaml(&self, path: &str) {
         let file = File::create(path).expect("Unable to open file");
         // let mut defs: Vec<DefItemInDB> = vec![];
         let mut flat: Vec<DefItem> = vec![];
-        for r in self.db.iterator(rocksdb::IteratorMode::Start) {
+        for r in self
+            .db
+            .read()
+            .unwrap()
+            .iterator(rocksdb::IteratorMode::Start)
+        {
             if r.is_ok() {
                 let (k, v) = r.unwrap();
                 // let k: DBKey = Self::deserialize(&k).unwrap();
@@ -217,7 +232,7 @@ impl<Ix: Indexer> offdict<Ix> {
         serde_yaml::to_writer(file, &flat).unwrap();
     }
 
-    pub fn import_glob(&mut self, path: &str) -> Result<()> {
+    pub fn import_glob(&self, path: &str) -> Result<()> {
         let options = glob::MatchOptions {
             case_sensitive: false,
             ..Default::default()
@@ -244,7 +259,7 @@ impl<Ix: Indexer> offdict<Ix> {
         Ok(())
     }
 
-    pub fn import_from_file(&mut self, path: &str, dict_name: &str) -> Result<()> {
+    pub fn import_from_file(&self, path: &str, dict_name: &str) -> Result<()> {
         let ds = Def::load_yaml(&path, &dict_name)?;
         debug_println!("loaded {} Defs", ds.len());
         self.import_defs(ds)?;
@@ -253,34 +268,48 @@ impl<Ix: Indexer> offdict<Ix> {
     }
 
     #[timed]
-    pub fn import_defs(&mut self, defs: Vec<DefItem>) -> Result<()> {
+    pub fn import_defs(&self, defs: Vec<DefItem>) -> Result<()> {
         let ws: Vec<DefItemWrapped> = defs.into_iter().map(|d| d.into()).collect();
         self.import_wrapped(ws);
         Ok(())
     }
 
-    pub fn import_wrapped(&mut self, wrapped: Vec<DefItemWrapped>) {
+    pub fn import_wrapped(&self, wrapped: Vec<DefItemWrapped>) {
         for incoming_w in wrapped {
             for (k, v) in incoming_w.items {
-                self.db.put(v.key(), Self::serialize(&v).unwrap()).unwrap();
+                self.db
+                    .read()
+                    .unwrap()
+                    .put(v.key(), Self::serialize(&v).unwrap())
+                    .unwrap();
             }
         }
     }
 
     pub fn stat(&self) -> stat {
-        let t = self.db.iterator(rocksdb::IteratorMode::Start).count();
+        let t = self
+            .db
+            .read()
+            .unwrap()
+            .iterator(rocksdb::IteratorMode::Start)
+            .count();
 
         stat { words: t }
     }
 
     #[timed]
     pub fn build_fst_from_db(&mut self) -> Result<usize> {
-        let mut px = self.data_path.clone();
+        let mut px = self.dirpath.clone();
         px.push(Ix::FILE_NAME);
 
         let mut set: BTreeSet<String> = BTreeSet::new();
         let c = set.len();
-        for res in self.db.iterator(rocksdb::IteratorMode::Start) {
+        for res in self
+            .db
+            .read()
+            .unwrap()
+            .iterator(rocksdb::IteratorMode::Start)
+        {
             if res.is_ok() {
                 let (k, v) = res.unwrap();
                 let word = String::from_utf8(DBKey::slice(&k).0.to_vec()).unwrap();
@@ -293,7 +322,7 @@ impl<Ix: Indexer> offdict<Ix> {
         sorted.sort();
 
         Ix::build_all(sorted, &px)?;
-        self.fst_set = Some(Ix::load_file(&px)?);
+        self.set = Some(Ix::load_file(&px)?);
 
         Ok(c)
     }
@@ -525,7 +554,10 @@ struct Cli {
 }
 
 // continue running ?
-pub fn tui<Ix: Indexer>(db_w: &mut offdict<Ix>) -> Result<bool> {
+pub fn process_cmd<Ix: Indexer>(db_w: &mut offdict<Ix>) -> Result<bool>
+where
+    offdict<Ix>: Diverge,
+{
     let args = Cli::parse();
 
     match args.command {
@@ -598,10 +630,10 @@ pub struct SetRes {
     defs: bool, // true means result is empty
 }
 
-pub async fn serve<Ix: Indexer + Send + Sync + 'static>(
-    db_tok: Arc<RwLock<offdict<Ix>>>,
-) -> Result<()> {
-    let db_t1 = db_tok.clone();
+pub async fn serve<Ix: Indexer + Send + Sync + 'static>(db_t1: &'static offdict<Ix>) -> Result<()>
+where
+    offdict<Ix>: Diverge,
+{
     let lookup = warp::get()
         .and(warp::path("q"))
         .and(warp::path::param::<String>())
@@ -611,7 +643,7 @@ pub async fn serve<Ix: Indexer + Send + Sync + 'static>(
                 .or_else(|_| async { Ok::<(Option<ApiOpts>,), std::convert::Infallible>((None,)) }),
         )
         .map(move |word: String, opts: Option<ApiOpts>| {
-            let db_r = db_t1.read().unwrap();
+            let db_r = db_t1;
             let word = percent_encoding::percent_decode_str(&word)
                 .decode_utf8()
                 .unwrap()
@@ -632,7 +664,7 @@ pub async fn serve<Ix: Indexer + Send + Sync + 'static>(
                 .or_else(|_| async { Ok::<(Option<ApiOpts>,), std::convert::Infallible>((None,)) }),
         )
         .map(move |word: String, opts: Option<ApiOpts>| {
-            let db_r = db_tok.read().unwrap();
+            let db_r = db_t1;
             let word = percent_encoding::percent_decode_str(&word)
                 .decode_utf8()
                 .unwrap()
@@ -649,16 +681,17 @@ pub async fn serve<Ix: Indexer + Send + Sync + 'static>(
         .await)
 }
 
-pub async fn repl<Ix: Indexer>(db_: Arc<RwLock<offdict<Ix>>>) -> Result<()> {
+pub async fn repl<Ix: Indexer>(db: &offdict<Ix>) -> Result<()>
+where
+    offdict<Ix>: Diverge,
+{
     loop {
         let li = readline().await.unwrap();
         let li = li.trim();
         if li.is_empty() {
             continue;
         } else {
-            let db = db_.read().unwrap();
-
-            match respond(li, db.borrow()) {
+            match respond(li, db) {
                 Ok(quit) => {
                     if quit {
                         break Ok(());
@@ -689,11 +722,10 @@ async fn readline() -> Result<String> {
     Ok(lines.next_line().await?.unwrap())
 }
 
-pub fn api_q(
-    db: &offdict<impl Indexer>,
-    query: &str,
-    opts: ApiOpts,
-) -> Result<Vec<Def>> {
+pub fn api_q<Ix: Indexer>(db: &offdict<Ix>, query: &str, opts: ApiOpts) -> Result<Vec<Def>>
+where
+    offdict<Ix>: Diverge,
+{
     println!("\nq: {}", query);
 
     let mut arr = db.search(query, 30, opts.expensive)?;
@@ -702,7 +734,10 @@ pub fn api_q(
     Ok(def_list)
 }
 
-fn respond(line: &str, db: &offdict<impl Indexer>) -> Result<bool> {
+fn respond<Ix: Indexer>(line: &str, db: &offdict<Ix>) -> Result<bool>
+where
+    offdict<Ix>: Diverge,
+{
     let mut arr = db.search(line, 2, true)?;
 
     println!("{} results", arr.len());
@@ -718,6 +753,8 @@ fn respond(line: &str, db: &offdict<impl Indexer>) -> Result<bool> {
 }
 
 pub use def::*;
+
+use crate::topk::TopkParam;
 pub mod def;
 mod tests;
 

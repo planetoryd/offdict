@@ -332,7 +332,7 @@ fn main() -> Result<()> {
     let mut d = offdict::open_db(db_path.to_str().unwrap().to_owned())?;
 
     d.set_input = Some(on_input);
-    if !offdictd::tui(&mut d).unwrap() {
+    if !offdictd::process_cmd(&mut d).unwrap() {
         return Ok(());
     }
 
