@@ -765,7 +765,6 @@ use crate::topk::TopkParam;
 pub mod def;
 mod tests;
 
-#[cfg(debug_assertions)]
 pub mod fst_index;
 
 pub mod def_bin;

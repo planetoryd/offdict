@@ -4,7 +4,6 @@ version = "0.2.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
 resolver = "2"
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -34,6 +33,10 @@ anyhow = "1.0.76"
 strprox = { path = "../strprox", features = ["serde"] }
 derive-new = "0.6.0"
 fst = { version = "0.4.7", features = ["levenshtein"] }
+rand = "0.8.5"
+criterion = { version = "0.5.1", features = ["html_reports"] }
 
-[dev-dependencies]
-criterion = "0.3"
+[[bench]]
+name = "indxer"
+harness = false
+

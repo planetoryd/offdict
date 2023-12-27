@@ -182,11 +182,10 @@ impl Indexer for fstmmap {
         bu.finish()?;
         Ok(())
     }
-    fn count(&self) -> usize {
+    fn count(&self, brw: &Self::Brw) -> usize {
         self.len()
     }
 }
-
 
 impl Diverge for offdict<fstmmap> {
     type Ix = fstmmap;
