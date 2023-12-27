@@ -53,20 +53,23 @@ pub struct stat {
 
 pub type candidate = String;
 pub type candidates = Vec<candidate>;
-pub struct offdict<index: for<'de> Indexer<'de>> {
+pub struct offdict<index: Indexer> {
     db: rocks,
     fst_set: Option<index>,
     data_path: PathBuf,
     pub set_input: Option<fn(&str, bool) -> Result<bool>>,
 }
 
-pub trait Indexer<'de>: Sized + 'de {
+pub trait Indexer: Sized + 'static {
     const FILE_NAME: &'static str;
     fn load_file(pp: &Path) -> Result<Self>;
     fn query(&self, query: &str, expensive: bool) -> Result<candidates>;
     fn build_all(words: impl IntoIterator<Item = String>, pp: &Path) -> Result<()>;
+}
+
+pub trait Init {
     /// The caller who owns the data shall init it.
-    fn init(&'de mut self) -> Result<()> {
+    fn init(&'static mut self) -> Result<()> {
         Ok(())
     }
 }
@@ -97,7 +100,17 @@ pub fn get_dictname_from_path(path: String) -> Option<String> {
     }
 }
 
-impl<Ix: for<'i> Indexer<'i>> offdict<Ix> {
+impl<Ix: Indexer + Init> Init for offdict<Ix> {
+    fn init(&'static mut self) -> Result<()> {
+        if let Some(ref mut f) = self.fst_set {
+            f.init()
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl<Ix: Indexer> offdict<Ix> {
     pub fn serialize<T: Serialize>(v: &T) -> Result<Vec<u8>, Box<bincode::ErrorKind>> {
         bincode::serialize(v)
     }
@@ -126,8 +139,7 @@ impl<Ix: for<'i> Indexer<'i>> offdict<Ix> {
         db = rocks::open(&opts, n).unwrap();
         pp.pop();
         pp.push("fst");
-
-        Ok(if pp.exists() {
+        let mut od = if pp.exists() {
             offdict {
                 db,
                 fst_set: Some(Ix::load_file(&pp)?),
@@ -141,7 +153,9 @@ impl<Ix: for<'i> Indexer<'i>> offdict<Ix> {
                 data_path: p2,
                 set_input: None,
             }
-        })
+        };
+
+        Ok(od)
     }
 
     pub fn reset_db(&mut self) {
@@ -511,7 +525,7 @@ struct Cli {
 }
 
 // continue running ?
-pub fn tui<Ix: for<'de> Indexer<'de>>(db_w: &mut offdict<Ix>) -> Result<bool> {
+pub fn tui<Ix: Indexer>(db_w: &mut offdict<Ix>) -> Result<bool> {
     let args = Cli::parse();
 
     match args.command {
@@ -584,7 +598,7 @@ pub struct SetRes {
     defs: bool, // true means result is empty
 }
 
-pub async fn serve<Ix: for<'de> Indexer<'de> + Send + Sync + 'static>(
+pub async fn serve<Ix: Indexer + Send + Sync + 'static>(
     db_tok: Arc<RwLock<offdict<Ix>>>,
 ) -> Result<()> {
     let db_t1 = db_tok.clone();
@@ -635,7 +649,7 @@ pub async fn serve<Ix: for<'de> Indexer<'de> + Send + Sync + 'static>(
         .await)
 }
 
-pub async fn repl<Ix: for<'de> Indexer<'de>>(db_: Arc<RwLock<offdict<Ix>>>) -> Result<()> {
+pub async fn repl<Ix: Indexer>(db_: Arc<RwLock<offdict<Ix>>>) -> Result<()> {
     loop {
         let li = readline().await.unwrap();
         let li = li.trim();
@@ -676,7 +690,7 @@ async fn readline() -> Result<String> {
 }
 
 pub fn api_q(
-    db: &offdict<impl for<'de> Indexer<'de>>,
+    db: &offdict<impl Indexer>,
     query: &str,
     opts: ApiOpts,
 ) -> Result<Vec<Def>> {
@@ -688,7 +702,7 @@ pub fn api_q(
     Ok(def_list)
 }
 
-fn respond(line: &str, db: &offdict<impl for<'de> Indexer<'de>>) -> Result<bool> {
+fn respond(line: &str, db: &offdict<impl Indexer>) -> Result<bool> {
     let mut arr = db.search(line, 2, true)?;
 
     println!("{} results", arr.len());

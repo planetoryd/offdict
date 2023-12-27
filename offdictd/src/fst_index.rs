@@ -110,7 +110,7 @@ impl Into<f32> for &Metrics {
 pub use fst::Set as fstset;
 pub type fstmmap = fstset<Mmap>;
 
-impl<'de> Indexer<'de> for fstmmap {
+impl Indexer for fstmmap {
     const FILE_NAME: &'static str = "fst";
     fn load_file(pp: &Path) -> Result<Self> {
         let mmap = unsafe { Mmap::map(&File::open(pp).unwrap()).unwrap() };

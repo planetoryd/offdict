@@ -3,12 +3,12 @@ use strprox::{Autocompleter, TreeStringT};
 use crate::*;
 use crate::{candidates, Indexer};
 
-struct Strprox<'de> {
+pub struct Strprox {
     file: Mmap,
-    set: Option<Autocompleter<'de>>,
+    set: Option<Autocompleter<'static>>,
 }
 
-impl<'de> Indexer<'de> for Strprox<'de> {
+impl Indexer for Strprox {
     const FILE_NAME: &'static str = "strprox";
     fn build_all(
         words: impl IntoIterator<Item = String>,
@@ -34,7 +34,11 @@ impl<'de> Indexer<'de> for Strprox<'de> {
     fn query(&self, query: &str, expensive: bool) -> anyhow::Result<crate::candidates> {
         Ok(candidates::default())
     }
-    fn init(&'de mut self) -> Result<()> {
+
+}
+
+impl Init for Strprox {
+    fn init(&'static mut self) -> Result<()> {
         self.set = Some(bincode::deserialize(&self.file)?);
         Ok(())
     }
