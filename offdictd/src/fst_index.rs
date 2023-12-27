@@ -9,7 +9,7 @@ use std::{default, fmt};
 use debug_print::debug_println;
 use fst::automaton::{self, Levenshtein, Subsequence, Union};
 use fst::set::Stream;
-use fst::Automaton;
+use fst::{Automaton, SetBuilder};
 use fst::{IntoStreamer, Set, Streamer};
 use regex_automata::dfa::dense::{self, Config};
 
@@ -122,7 +122,6 @@ impl Indexer for fstmmap {
         let set = self;
         let len = q.chars().count();
         let mut map: BTreeMap<String, Metrics> = BTreeMap::new();
-
         let keys = if len <= 2 {
             let star = automaton::Str::new(q).starts_with(); // matches strings starting with q
             let stream = set.search(&star).into_stream();
@@ -182,5 +181,23 @@ impl Indexer for fstmmap {
         });
         bu.finish()?;
         Ok(())
+    }
+    fn count(&self) -> usize {
+        self.len()
+    }
+}
+
+
+impl Diverge for offdict<fstmmap> {
+    type Ix = fstmmap;
+    #[timed]
+    fn search(&self, query: &str, num: usize, expensive: bool) -> Result<Vec<DefItemWrapped>> {
+        let mut cands = self.candidates(query, expensive)?;
+        cands.truncate(num);
+        let mut res: Vec<DefItemWrapped> = vec![];
+        for s in cands {
+            res.push(self.retrieve(s).unwrap());
+        }
+        Ok(res)
     }
 }

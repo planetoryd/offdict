@@ -6,15 +6,22 @@ use std::{
 
 use tokio::{self};
 
-use offdictd::{def_bin::WrapperDef, fst_index::fstmmap, *};
+use offdictd::{def_bin::WrapperDef, *};
 use topk::Strprox;
 
 fn main() -> Result<()> {
     let conf = crate::config::get_config();
+    println!("config: {:?}", &conf);
 
     let db_path = PathBuf::from(conf.data_path.clone());
+
+    newix(db_path)
+}
+
+fn newix(db_path: PathBuf) -> Result<()> {
+    static mut DB: Option<offdict<Strprox>> = None;
+
     let mut db = offdict::<Strprox>::open_db(db_path)?;
-    println!("config: {:?}", &conf);
 
     process_cmd(&mut db)?;
     unsafe {
@@ -24,15 +31,14 @@ fn main() -> Result<()> {
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     rt.block_on(async move {
-        db.set_brw = Some(bincode::deserialize(&db.set.as_ref().unwrap().file)?);
-        tokio::try_join!(serve(db), repl(db))
+        if let Some(ref set) = db.set {
+            db.set_brw = Some(bincode::deserialize(&set.file)?);
+            tokio::try_join!(serve(db), repl(db))?;
+        } else {
+            println!("Run offdictd build to initialize the index");
+        }
+        anyhow::Ok(())
     })?;
 
     Ok(())
 }
-
-pub type IxTy = Strprox;
-
-static mut DB: Option<offdict<IxTy>> = None;
-
-// fn api_lookup(res:Vec<Def>)

@@ -40,6 +40,9 @@ impl Indexer for Strprox {
         let cands: Vec<_> = rx.into_iter().map(|k| k.string).collect();
         Ok(cands)
     }
+    fn count(&self, brw: &Self::Brw) -> usize {
+        brw.len()
+    }
 }
 
 // impl Init for Strprox {

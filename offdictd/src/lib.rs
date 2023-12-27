@@ -4,11 +4,11 @@
 #![feature(async_closure)]
 #![feature(anonymous_lifetime_in_impl_trait)]
 #![feature(associated_type_defaults)]
+#![feature(let_chains)]
 
 use anyhow::bail;
 pub use anyhow::Result;
-use fst::SetBuilder;
-use fst_index::fstmmap;
+
 pub use serde::{Deserialize, Serialize};
 
 pub use serde_yaml::{self};
@@ -19,6 +19,7 @@ use topk::Strprox;
 use std::borrow::Borrow;
 use std::collections::{self, BTreeMap, BTreeSet, HashMap};
 
+use std::fs::remove_dir_all;
 use std::io::BufWriter;
 use std::iter::FromIterator;
 
@@ -53,6 +54,7 @@ pub type DB = rocks;
 
 pub struct stat {
     pub words: usize,
+    pub unique_words: Option<usize>,
 }
 
 pub type candidate = String;
@@ -72,6 +74,7 @@ pub trait Indexer: Sized + 'static {
     fn load_file(pp: &Path) -> Result<Self>;
     fn query(&self, query: &str, para: Self::Param, brw: &Self::Brw) -> Result<candidates>;
     fn build_all(words: impl IntoIterator<Item = String>, pp: &Path) -> Result<()>;
+    fn count(&self, brw: &Self::Brw) -> usize;
 }
 
 #[test]
@@ -105,20 +108,6 @@ pub trait Diverge {
     fn search(&self, query: &str, num: usize, expensive: bool) -> Result<Vec<DefItemWrapped>>;
 }
 
-impl Diverge for offdict<fstmmap> {
-    type Ix = fstmmap;
-    #[timed]
-    fn search(&self, query: &str, num: usize, expensive: bool) -> Result<Vec<DefItemWrapped>> {
-        let mut cands = self.candidates(query, expensive)?;
-        cands.truncate(num);
-        let mut res: Vec<DefItemWrapped> = vec![];
-        for s in cands {
-            res.push(self.retrieve(s).unwrap());
-        }
-        Ok(res)
-    }
-}
-
 impl Diverge for offdict<Strprox> {
     type Ix = Strprox;
     #[timed]
@@ -130,6 +119,15 @@ impl Diverge for offdict<Strprox> {
         }
         Ok(res)
     }
+}
+
+pub const DBPATH: &str = "dicts.db";
+
+pub fn rmdata<Ix: Indexer>(data: &offdict<Ix>) -> Result<()> {
+    let dp = &data.dirpath;
+    remove_dir_all(dp)?;
+
+    Ok(())
 }
 
 impl<Ix: Indexer> offdict<Ix> {
@@ -154,7 +152,7 @@ impl<Ix: Indexer> offdict<Ix> {
         tableopts.set_index_type(rocksdb::BlockBasedIndexType::HashSearch);
         opts.set_block_based_table_factory(&tableopts);
 
-        db = Arc::new(rocks::open(&opts, path.join("dicts.db")).unwrap().into());
+        db = Arc::new(rocks::open(&opts, path.join(DBPATH)).unwrap().into());
         let idx = path.join(Ix::FILE_NAME);
         let od = if idx.exists() {
             offdict {
@@ -176,11 +174,6 @@ impl<Ix: Indexer> offdict<Ix> {
 
         Ok(od)
     }
-
-    pub fn reset_db(&mut self) {
-        self.db.write().unwrap().drop_cf("default").unwrap();
-    }
-
     pub fn candidates(&self, query: &str, param: Ix::Param) -> Result<candidates> {
         if let Some(index) = &self.set {
             index.query(query, param, self.set_brw.as_ref().unwrap())
@@ -251,10 +244,11 @@ impl<Ix: Indexer> offdict<Ix> {
                 bail!("Error getting dict name for {}", entr)
             }
         }
-
         pendin.into_iter().for_each(|(p, e)| {
             self.import_from_file(p.as_str(), e.as_str()).unwrap();
         });
+
+        self.db.write().unwrap().flush();
 
         Ok(())
     }
@@ -294,16 +288,24 @@ impl<Ix: Indexer> offdict<Ix> {
             .iterator(rocksdb::IteratorMode::Start)
             .count();
 
-        stat { words: t }
+        stat {
+            words: t,
+            unique_words: if let Some(ref ix) = self.set
+                && let Some(ref b) = self.set_brw
+            {
+                Some(ix.count(b))
+            } else {
+                None
+            },
+        }
     }
 
     #[timed]
-    pub fn build_fst_from_db(&mut self) -> Result<usize> {
+    pub fn build_index_from_db(&mut self) -> Result<usize> {
         let mut px = self.dirpath.clone();
         px.push(Ix::FILE_NAME);
 
         let mut set: BTreeSet<String> = BTreeSet::new();
-        let c = set.len();
         for res in self
             .db
             .read()
@@ -316,6 +318,7 @@ impl<Ix: Indexer> offdict<Ix> {
                 set.insert(word);
             }
         }
+        let c = set.len();
 
         debug_println!("word set len {}", set.len());
         let mut sorted: Vec<String> = set.into_iter().collect();
@@ -519,6 +522,7 @@ enum Commands {
         arg_required_else_help = false
     )]
     yaml {
+        /// Glob pattern
         #[arg(short = 'p', required = true)]
         path: String,
         #[arg(short = 'c', long)]
@@ -585,7 +589,10 @@ where
         }
         Some(Commands::stat {}) => {
             let s = db_w.stat();
-            println!("Words in database: {}", s.words);
+            println!("Words in database: {}. ", s.words);
+            if let Some(uw) = s.unique_words {
+                println!("In the index: {} unique words", uw);
+            }
             Ok(false)
         }
         Some(Commands::lookup { query }) => {
@@ -596,12 +603,12 @@ where
             Ok(false)
         }
         Some(Commands::reset {}) => {
-            db_w.reset_db();
+            rmdata(&db_w);
             println!("reset.");
             Ok(false)
         }
         Some(Commands::build {}) => {
-            let c = db_w.build_fst_from_db()?;
+            let c = db_w.build_index_from_db()?;
             println!("built, {} words", c);
             Ok(true)
         }
@@ -758,6 +765,7 @@ use crate::topk::TopkParam;
 pub mod def;
 mod tests;
 
+#[cfg(debug_assertions)]
 pub mod fst_index;
 
 pub mod def_bin;

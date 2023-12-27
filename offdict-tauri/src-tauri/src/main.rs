@@ -325,6 +325,8 @@ fn on_input(s: &str, expensive: bool) -> Result<bool> {
 
 fn main() -> Result<()> {
     let conf = offdictd::config::get_config();
+
+    
     let db_path = PathBuf::from(conf.data_path.clone());
     let dont_hide = true; // minimize instead of hiding
                           // FIXME: Temp fix for wayland where shortcut doesnt bring the window back.
