@@ -323,17 +323,17 @@ fn on_input(s: &str, expensive: bool) -> Result<bool> {
     Ok(def_list.is_empty())
 }
 
-fn main() {
+fn main() -> Result<()> {
     let conf = offdictd::config::get_config();
     let db_path = PathBuf::from(conf.data_path.clone());
     let dont_hide = true; // minimize instead of hiding
                           // FIXME: Temp fix for wayland where shortcut doesnt bring the window back.
     println!("{:?}", conf);
-    let mut d = offdict::open_db(db_path.to_str().unwrap().to_owned());
+    let mut d = offdict::open_db(db_path.to_str().unwrap().to_owned())?;
 
     d.set_input = Some(on_input);
     if !offdictd::tui(&mut d).unwrap() {
-        return;
+        return Ok(());
     }
 
     if cfg!(target_os = "linux") {
@@ -469,4 +469,5 @@ fn main() {
 
     x.run(tauri::generate_context!())
         .expect("error while running tauri application");
+    Ok(())
 }
