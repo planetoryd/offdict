@@ -31,7 +31,6 @@
   let notfound = false;
   let welcome = true;
 
-
   listen("error", (e) => {});
   listen("clip", (e) => {
     inputWord = e.payload as string;
@@ -426,7 +425,7 @@
   :global(body) {
     $bg: rgb(21, 63, 68);
     $text: rgba(255, 255, 255, 0.692);
-    background: $bg;
+    background: $bg !important;
     color: $text;
     .card.welcome {
       background: rgba(255, 255, 255, 0.15);

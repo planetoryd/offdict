@@ -67,4 +67,4 @@ For now GDK_BACKEND=x11 is set by hardcode
 
 ## Notes 
 
-- faster fuzzy autocompletion algorithm. https://github.com/qinbill/IncNgTrie ?
+- `cargo tauri build -d -b none`
