@@ -9,6 +9,9 @@
 use anyhow::bail;
 pub use anyhow::Result;
 
+use fst_index::fstmmap;
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 pub use serde::{Deserialize, Serialize};
 
 pub use serde_yaml::{self};
@@ -25,6 +28,7 @@ use std::iter::FromIterator;
 
 use std::marker::PhantomData;
 use std::str::FromStr;
+use std::time::Duration;
 use std::{self, fs, vec};
 
 // use bson::{self, Array, Serializer};
@@ -103,12 +107,11 @@ pub fn get_dictname_from_path(path: String) -> Option<String> {
 
 pub trait Diverge {
     type Ix;
-    fn search(&self, query: &str, num: usize, expensive: bool) -> Result<Vec<DefItemWrapped>>;
+    fn search(&self, query: &str, num: usize, param: bool) -> Result<Vec<DefItemWrapped>>;
 }
 
 impl Diverge for offdict<Strprox> {
     type Ix = Strprox;
-    #[timed]
     fn search(&self, query: &str, num: usize, _: bool) -> Result<Vec<DefItemWrapped>> {
         let cands = self.candidates(query, TopkParam::new(num))?;
         let mut res: Vec<DefItemWrapped> = vec![];
@@ -151,6 +154,10 @@ impl<Ix: Indexer> offdict<Ix> {
         opts.set_block_based_table_factory(&tableopts);
 
         db = Arc::new(rocks::open(&opts, path.join(DBPATH)).unwrap().into());
+        Self::from_db(db, path)
+    }
+
+    pub fn from_db(db: Arc<RwLock<rocks>>, path: PathBuf) -> Result<Self> {
         let idx = path.join(Ix::FILE_NAME);
         let od = if idx.exists() {
             offdict {
@@ -170,6 +177,7 @@ impl<Ix: Indexer> offdict<Ix> {
 
         Ok(od)
     }
+
     pub fn candidates(&self, query: &str, param: Ix::Param) -> Result<candidates> {
         if let Some(index) = &self.set {
             index.query(query, param)
@@ -542,6 +550,13 @@ enum Commands {
     reset {},
     #[command(about = "Build index, required after adding or removing words")]
     build {},
+    #[command(about = "Benchmark")]
+    bench {
+        #[arg(short, long)]
+        delay: bool,
+        #[arg(short, long)]
+        short: bool,
+    },
 }
 
 #[derive(Parser, Debug)]
@@ -551,11 +566,7 @@ struct Cli {
     command: Option<Commands>,
 }
 
-// continue running ?
-pub fn process_cmd<Ix: Indexer>(db_w: &mut offdict<Ix>) -> Result<bool>
-where
-    offdict<Ix>: Diverge,
-{
+pub fn process_cmd(db: &mut offdict<Strprox>) -> Result<bool> {
     let args = Cli::parse();
 
     match args.command {
@@ -574,7 +585,7 @@ where
 
                 return Ok(false);
             } else {
-                match db_w.import_glob(&path) {
+                match db.import_glob(&path) {
                     Ok(()) => println!("imported"),
                     Err(e) => println!("{:?}", e),
                 }
@@ -582,7 +593,7 @@ where
             Ok(false)
         }
         Some(Commands::stat {}) => {
-            let s = db_w.stat();
+            let s = db.stat();
             println!("Words in database: {}. ", s.words);
             if let Some(uw) = s.unique_words {
                 println!("In the index: {} unique words", uw);
@@ -590,29 +601,65 @@ where
             Ok(false)
         }
         Some(Commands::lookup { query }) => {
-            for d in db_w.search(&query, 1, true)? {
+            for d in db.search(&query, 1, true)? {
                 let list: Vec<Def> = d.vec_human();
                 println!("{}", serde_yaml::to_string::<Vec<Def>>(&list)?)
             }
             Ok(false)
         }
         Some(Commands::reset {}) => {
-            rmdata(&db_w);
+            rmdata(&db);
             println!("reset.");
             Ok(false)
         }
         Some(Commands::build {}) => {
-            let c = db_w.build_index_from_db()?;
+            let c = db.build_index_from_db()?;
             println!("built, {} words", c);
+            Ok(true)
+        }
+        Some(Commands::bench { delay, short }) => {
+            #[cfg(feature = "fst")]
+            let fstdb = offdict::<fstmmap>::from_db(db.db.clone(), db.dirpath.clone())?;
+            let num = 20;
+            println!("choosing {} words at random", num);
+            let mut rng = thread_rng();
+            let strvec = &db.set.as_ref().unwrap().yoke.get().trie.strings;
+            dbg!(&strvec[2000..2006]);
+            let word = strvec.choose_multiple(&mut rng, num);
+            for q in word {
+                if q.len() > 10 {
+                    continue;
+                }
+                println!("query \"{}\"", q);
+                db.candidates(&q, TopkParam::new(3));
+                print!("fst: ");
+                fstdb.candidates(&q, false);
+                if delay {
+                    std::thread::sleep(Duration::from_micros(200));
+                }
+            }
             Ok(true)
         }
         None => Ok(true),
     }
 }
 
+#[test]
+fn test_worse_case() -> Result<()> {
+    let case = "bring more land under cultivation";
+    let conf = crate::config::get_config();
+    let db_path = PathBuf::from(conf.data_path.clone());
+    let db = offdict::<Strprox>::open_db(db_path)?;
+    println!("testing");
+    db.search(case, 3, false)?;
+    Ok(())
+}
+
 use std::sync::{Arc, RwLock};
 use tokio::{self};
 use warp::Filter;
+
+pub static mut DB: Option<offdict<Strprox>> = None;
 
 pub mod config;
 
@@ -631,7 +678,7 @@ pub struct SetRes {
     defs: bool, // true means result is empty
 }
 
-pub async fn serve<Ix: Indexer + Send + Sync + 'static>(db_t1: &'static offdict<Ix>) -> Result<()>
+pub async fn serve<Ix: Indexer + Send + Sync + 'static>(db: &'static offdict<Ix>) -> Result<()>
 where
     offdict<Ix>: Diverge,
 {
@@ -644,12 +691,11 @@ where
                 .or_else(|_| async { Ok::<(Option<ApiOpts>,), std::convert::Infallible>((None,)) }),
         )
         .map(move |word: String, opts: Option<ApiOpts>| {
-            let db_r = db_t1;
             let word = percent_encoding::percent_decode_str(&word)
                 .decode_utf8()
                 .unwrap()
                 .to_string();
-            warp::reply::json(&api_q(&db_r, &word, opts.unwrap_or_default()).unwrap())
+            warp::reply::json(&api_q(&db, &word, opts.unwrap_or_default()).unwrap())
         });
 
     let stat = warp::get()
@@ -665,14 +711,13 @@ where
                 .or_else(|_| async { Ok::<(Option<ApiOpts>,), std::convert::Infallible>((None,)) }),
         )
         .map(move |word: String, opts: Option<ApiOpts>| {
-            let db_r = db_t1;
             let word = percent_encoding::percent_decode_str(&word)
                 .decode_utf8()
                 .unwrap()
                 .to_string();
             let mut r: SetRes = SetRes { defs: false };
-            if db_r.set_input.is_some() {
-                r.defs = db_r.set_input.unwrap()(&word, false).unwrap();
+            if db.set_input.is_some() {
+                r.defs = db.set_input.unwrap()(&word, false).unwrap();
             }
             warp::reply::json(&r)
         });
@@ -759,6 +804,7 @@ use crate::topk::TopkParam;
 pub mod def;
 mod tests;
 
+#[cfg(feature = "fst")]
 pub mod fst_index;
 
 pub mod def_bin;

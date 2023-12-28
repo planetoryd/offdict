@@ -25,19 +25,15 @@ serde_with = { version = "2.1.0", features = ["base64"] }
 debug_print = "1.0.0"
 lazy-regex = "2.3.1"
 glob = "0.3.0"
-regex-automata = { version = "0.2.0", features = ["transducer"] }
 memmap2 = { version = "0.9.3", features = ["stable_deref_trait"] }
 rocksdb = "0.21"
 bitmask-enum = "2.1.0"
 anyhow = "1.0.76"
 strprox = { path = "../strprox", features = ["serde"] }
 derive-new = "0.6.0"
-fst = { version = "0.4.7", features = ["levenshtein"] }
+fst = { version = "0.4.7", features = ["levenshtein"], optional = true }
 rand = "0.8.5"
-criterion = { version = "0.5.1", features = ["html_reports"] }
 yoke = "0.7.3"
-
-[[bench]]
-name = "indxer"
-harness = false
-
+[features]
+fst = ["dep:fst"]
+default = ["fst"]

@@ -28,6 +28,7 @@ impl Indexer for Strprox {
         Ok(())
     }
     fn load_file(pp: &std::path::Path) -> Result<Self> {
+        println!("loading index from {:?}", pp);
         let f = std::fs::File::open(pp)?;
         let sel = Self {
             yoke: Yoke::try_attach_to_cart(unsafe { Mmap::map(&f) }?, |data| {
@@ -36,6 +37,7 @@ impl Indexer for Strprox {
         };
         Ok(sel)
     }
+    #[timed]
     fn query(&self, query: &str, param: TopkParam) -> Result<crate::candidates> {
         let topk = self.yoke.get();
         let rx = topk.autocomplete(query, param.num);

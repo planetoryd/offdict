@@ -22,17 +22,9 @@ fn fstix(db_path: PathBuf) -> Result<()> {
     static mut DB: Option<offdict<fstmmap>> = None;
 
     let mut db = offdict::<fstmmap>::open_db(db_path)?;
-
     process_cmd(&mut db)?;
-    unsafe {
-        DB = Some(db);
-    }
-    let db = unsafe { DB.as_mut() }.unwrap();
     let rt = tokio::runtime::Runtime::new().unwrap();
-    db.set_brw = Some(());
-    rt.block_on(async move { tokio::try_join!(serve(db), repl(db)) })?;
+    rt.block_on(async move { tokio::try_join!(serve(&db), repl(&db)) })?;
 
     Ok(())
 }
-
-// fn api_lookup(res:Vec<Def>)

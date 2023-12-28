@@ -11,7 +11,6 @@ use fst::automaton::{self, Levenshtein, Subsequence, Union};
 use fst::set::Stream;
 use fst::{Automaton, SetBuilder};
 use fst::{IntoStreamer, Set, Streamer};
-use regex_automata::dfa::dense::{self, Config};
 
 use timed;
 
@@ -114,11 +113,13 @@ impl Indexer for fstmmap {
     const FILE_NAME: &'static str = "fst";
     type Param = bool;
     fn load_file(pp: &Path) -> Result<Self> {
+        println!("loading FST index");
         let mmap = unsafe { Mmap::map(&File::open(pp).unwrap()).unwrap() };
         let set = fst::Set::new(mmap).unwrap();
         Ok(set)
     }
-    fn query(&self, q: &str, expensive: Self::Param) -> Result<candidates> {
+    #[timed]
+    fn query(&self, q: &str, expensive: bool) -> Result<candidates> {
         let set = self;
         let len = q.chars().count();
         let mut map: BTreeMap<String, Metrics> = BTreeMap::new();
@@ -189,7 +190,6 @@ impl Indexer for fstmmap {
 
 impl Diverge for offdict<fstmmap> {
     type Ix = fstmmap;
-    #[timed]
     fn search(&self, query: &str, num: usize, expensive: bool) -> Result<Vec<DefItemWrapped>> {
         let mut cands = self.candidates(query, expensive)?;
         cands.truncate(num);
