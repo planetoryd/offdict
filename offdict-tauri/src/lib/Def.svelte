@@ -143,7 +143,7 @@
     padding-left: 8px;
     padding-right: 8px;
   }
-  :global(body.dark) {
+  :global(body) {
     $text: rgba(255, 255, 255, 0.966);
     .explain {
       color: $text;

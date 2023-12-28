@@ -13,7 +13,7 @@ use gtk::{
 use gtk::{prelude::*, HeaderBar};
 // use lazy_regex;
 use lazy_regex::{lazy_regex, Lazy};
-use offdictd::{self, def_bin::WrapperDef, *};
+use offdictd::{self, def_bin::WrapperDef, topk::Strprox, *};
 use std::io;
 use std::{
     borrow::Cow, collections::BTreeSet, env, fs, iter::FromIterator, path::PathBuf, sync::Arc,
@@ -118,9 +118,7 @@ fn test_clip() {
     );
 }
 
-pub type InnerState = RwLock<offdict<offdictd::fst_index::fstmmap>>;
-
-pub struct OffdictState(pub Arc<InnerState>);
+pub struct OffdictState {}
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 
@@ -138,16 +136,13 @@ fn input<'a>(
 #[tauri::command]
 fn import<'a>(state: tauri::State<'a, OffdictState>) {
     println!("import");
-    // state.0.importing = true;
-    let v = state.0.clone();
 
     dialog::FileDialogBuilder::default()
         .add_filter("tar.gz/yaml", &["tar.gz", "yaml"])
         .pick_folder(move |folder| match folder {
             Some(folder) => {
                 thread::spawn(move || {
-                    // let mut db_ = v.db.write().unwrap();
-                    let mut db = v.write().unwrap();
+                    let db = unsafe { DB.as_ref().unwrap() };
 
                     println!("folder picked, {}", folder.display());
                     let paths = fs::read_dir(folder).unwrap();
@@ -180,7 +175,6 @@ fn import<'a>(state: tauri::State<'a, OffdictState>) {
 static mut ENTRY: Option<gtk::Entry> = None;
 static mut EntryFocus: bool = false;
 static mut w: Option<Window> = None;
-static mut state_: Option<Arc<InnerState>> = None;
 
 const CSS: &[u8] = b"
 headerbar entry,
@@ -303,10 +297,7 @@ struct set_input {
 
 // has results ?
 fn on_input(s: &str, expensive: bool) -> Result<bool> {
-    let db_ = unsafe { state_.as_ref().unwrap().read() };
-
-    let db = db_.as_ref().unwrap();
-
+    let db = unsafe { DB.as_ref().unwrap() };
     let mut d = db.search(s, 5, expensive)?;
     let mut def_list = offdictd::flatten_human(d);
 
@@ -326,23 +317,25 @@ fn on_input(s: &str, expensive: bool) -> Result<bool> {
 fn main() -> Result<()> {
     let conf = offdictd::config::get_config();
 
-    
     let db_path = PathBuf::from(conf.data_path.clone());
     let dont_hide = true; // minimize instead of hiding
                           // FIXME: Temp fix for wayland where shortcut doesnt bring the window back.
     println!("{:?}", conf);
-    let mut d = offdict::open_db(db_path.to_str().unwrap().to_owned())?;
-
-    d.set_input = Some(on_input);
-    if !offdictd::process_cmd(&mut d).unwrap() {
+    let mut db = offdict::<Strprox>::open_db(db_path)?;
+    unsafe {
+        DB = Some(db);
+    }
+    let mut db = unsafe { DB.as_mut() }.unwrap();
+    db.set_input = Some(on_input);
+    if !offdictd::process_cmd(&mut db).unwrap() {
         return Ok(());
     }
-
+    let db = &*db;
     if cfg!(target_os = "linux") {
         env::set_var("GDK_BACKEND", "x11"); // TODO: Wayland when it stop sucking
     }
 
-    let x = tauri::Builder::default()
+    let ta = tauri::Builder::default()
         .setup(move |app| {
             println!("{}", env::current_dir().unwrap().to_str().unwrap());
             println!("{:?}", conf);
@@ -442,17 +435,8 @@ fn main() -> Result<()> {
                 }
             }
 
-            let state: tauri::State<OffdictState> = app.state();
-            let v = state.0.clone();
-            unsafe {
-                state_ = Some(state.0.clone());
-            }
-
-            let mut db = v.write().unwrap();
-
-            // *db = d;
-
-            tauri::async_runtime::spawn(serve(v.clone()));
+            // let state: tauri::State<OffdictState> = app.state();
+            tauri::async_runtime::spawn(serve(&db));
 
             let mut m = Master::new(Handler {
                 app: app.get_window("main").unwrap(),
@@ -466,10 +450,10 @@ fn main() -> Result<()> {
             });
             Ok(())
         })
-        .manage(OffdictState(Arc::new(RwLock::new(d))))
+        .manage(OffdictState {})
         .invoke_handler(tauri::generate_handler![input, import]);
 
-    x.run(tauri::generate_context!())
+    ta.run(tauri::generate_context!())
         .expect("error while running tauri application");
     Ok(())
 }

@@ -30,11 +30,7 @@
   let show_not_found = true; // clip input was supposed to show explicit error
   let notfound = false;
   let welcome = true;
-  function dark() {
-    window.document.body.classList.add("dark");
-  }
 
-  dark();
 
   listen("error", (e) => {});
   listen("clip", (e) => {
@@ -427,7 +423,7 @@
     background: rgba(0, 119, 255, 0.158);
   }
 
-  :global(body.dark) {
+  :global(body) {
     $bg: rgb(21, 63, 68);
     $text: rgba(255, 255, 255, 0.692);
     background: $bg;
