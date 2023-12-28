@@ -1,11 +1,12 @@
 use anyhow::{anyhow, Result};
 use strprox::{Autocompleter, TreeStringT};
+use yoke::{Yoke, Yokeable};
 
 use crate::*;
 use crate::{candidates, Indexer};
 
 pub struct Strprox {
-    pub file: Mmap,
+    pub yoke: Yoke<Autocompleter<'static>, Mmap>,
 }
 
 #[derive(new)]
@@ -16,7 +17,6 @@ pub struct TopkParam {
 impl Indexer for Strprox {
     const FILE_NAME: &'static str = "strprox";
     type Param = TopkParam;
-    type Brw = Autocompleter<'static>;
     fn build_all(words: impl IntoIterator<Item = String>, pp: &std::path::Path) -> Result<()> {
         let arr: Vec<_> = words
             .into_iter()
@@ -30,18 +30,20 @@ impl Indexer for Strprox {
     fn load_file(pp: &std::path::Path) -> Result<Self> {
         let f = std::fs::File::open(pp)?;
         let sel = Self {
-            file: unsafe { Mmap::map(&f) }?,
+            yoke: Yoke::try_attach_to_cart(unsafe { Mmap::map(&f) }?, |data| {
+                bincode::deserialize(data)
+            })?,
         };
         Ok(sel)
     }
-    fn query(&self, query: &str, param: TopkParam, brw: &Self::Brw) -> Result<crate::candidates> {
-        let topk = brw;
+    fn query(&self, query: &str, param: TopkParam) -> Result<crate::candidates> {
+        let topk = self.yoke.get();
         let rx = topk.autocomplete(query, param.num);
         let cands: Vec<_> = rx.into_iter().map(|k| k.string).collect();
         Ok(cands)
     }
-    fn count(&self, brw: &Self::Brw) -> usize {
-        brw.len()
+    fn count(&self) -> usize {
+        self.yoke.get().len()
     }
 }
 

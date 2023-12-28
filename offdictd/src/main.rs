@@ -32,7 +32,6 @@ fn newix(db_path: PathBuf) -> Result<()> {
 
     rt.block_on(async move {
         if let Some(ref set) = db.set {
-            db.set_brw = Some(bincode::deserialize(&set.file)?);
             tokio::try_join!(serve(db), repl(db))?;
         } else {
             println!("Run offdictd build to initialize the index");

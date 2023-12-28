@@ -118,7 +118,7 @@ impl Indexer for fstmmap {
         let set = fst::Set::new(mmap).unwrap();
         Ok(set)
     }
-    fn query(&self, q: &str, expensive: Self::Param, brw: &Self::Brw) -> Result<candidates> {
+    fn query(&self, q: &str, expensive: Self::Param) -> Result<candidates> {
         let set = self;
         let len = q.chars().count();
         let mut map: BTreeMap<String, Metrics> = BTreeMap::new();
@@ -182,7 +182,7 @@ impl Indexer for fstmmap {
         bu.finish()?;
         Ok(())
     }
-    fn count(&self, brw: &Self::Brw) -> usize {
+    fn count(&self) -> usize {
         self.len()
     }
 }

@@ -62,7 +62,6 @@ pub type candidates = Vec<candidate>;
 pub struct offdict<index: Indexer> {
     db: Arc<RwLock<rocks>>,
     pub set: Option<index>,
-    pub set_brw: Option<index::Brw>,
     dirpath: PathBuf,
     pub set_input: Option<fn(&str, bool) -> Result<bool>>,
 }
@@ -70,11 +69,10 @@ pub struct offdict<index: Indexer> {
 pub trait Indexer: Sized + 'static {
     const FILE_NAME: &'static str;
     type Param = ();
-    type Brw: Send + Sync = ();
     fn load_file(pp: &Path) -> Result<Self>;
-    fn query(&self, query: &str, para: Self::Param, brw: &Self::Brw) -> Result<candidates>;
+    fn query(&self, query: &str, para: Self::Param) -> Result<candidates>;
     fn build_all(words: impl IntoIterator<Item = String>, pp: &Path) -> Result<()>;
-    fn count(&self, brw: &Self::Brw) -> usize;
+    fn count(&self) -> usize;
 }
 
 #[test]
@@ -160,7 +158,6 @@ impl<Ix: Indexer> offdict<Ix> {
                 set: Some(Ix::load_file(&idx)?),
                 dirpath: path,
                 set_input: None,
-                set_brw: None,
             }
         } else {
             offdict {
@@ -168,7 +165,6 @@ impl<Ix: Indexer> offdict<Ix> {
                 set: None,
                 dirpath: path,
                 set_input: None,
-                set_brw: None,
             }
         };
 
@@ -176,7 +172,7 @@ impl<Ix: Indexer> offdict<Ix> {
     }
     pub fn candidates(&self, query: &str, param: Ix::Param) -> Result<candidates> {
         if let Some(index) = &self.set {
-            index.query(query, param, self.set_brw.as_ref().unwrap())
+            index.query(query, param)
         } else {
             Ok(Default::default())
         }
@@ -290,10 +286,8 @@ impl<Ix: Indexer> offdict<Ix> {
 
         stat {
             words: t,
-            unique_words: if let Some(ref ix) = self.set
-                && let Some(ref b) = self.set_brw
-            {
-                Some(ix.count(b))
+            unique_words: if let Some(ref ix) = self.set {
+                Some(ix.count())
             } else {
                 None
             },
