@@ -34,7 +34,9 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let fst = fstmmap::load_file(&dir.join(fstmmap::FILE_NAME)).unwrap();
     c.bench_function("fst", |b| {
         b.iter_custom(|iters| {
-            let word = brw
+            let word = strpr
+                .yoke
+                .get()
                 .trie
                 .strings
                 .choose_multiple(&mut rng, iters.try_into().unwrap());
