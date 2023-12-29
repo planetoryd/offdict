@@ -48,10 +48,3 @@ impl Indexer for Strprox {
         self.yoke.get().len()
     }
 }
-
-// impl Init for Strprox {
-//     fn init(&'static mut self) -> Result<()> {
-//         self.set = Some(bincode::deserialize(&self.file)?);
-//         Ok(())
-//     }
-// }

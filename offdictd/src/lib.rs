@@ -10,6 +10,7 @@ use anyhow::bail;
 pub use anyhow::Result;
 
 use fst_index::fstmmap;
+use owo_colors::OwoColorize;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 pub use serde::{Deserialize, Serialize};
@@ -61,6 +62,17 @@ pub struct stat {
     pub unique_words: Option<usize>,
 }
 
+impl std::fmt::Display for stat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("Entries in database, {}.", self.words))?;
+        if let Some(uw) = &self.unique_words {
+            f.write_fmt(format_args!("Unique words in index, {}.", uw))
+        } else {
+            Ok(())
+        }
+    }
+}
+
 pub type candidate = String;
 pub type candidates = Vec<candidate>;
 pub struct offdict<index: Indexer> {
@@ -77,6 +89,9 @@ pub trait Indexer: Sized + 'static {
     fn query(&self, query: &str, para: Self::Param) -> Result<candidates>;
     fn build_all(words: impl IntoIterator<Item = String>, pp: &Path) -> Result<()>;
     fn count(&self) -> usize;
+    fn path(data_dir: &Path) -> PathBuf {
+        data_dir.join(Self::FILE_NAME)
+    }
 }
 
 #[test]
@@ -108,6 +123,9 @@ pub fn get_dictname_from_path(path: String) -> Option<String> {
 pub trait Diverge {
     type Ix;
     fn search(&self, query: &str, num: usize, param: bool) -> Result<Vec<DefItemWrapped>>;
+    fn bench(&self, cmd: Commands) -> Result<()> {
+        unimplemented!()
+    }
 }
 
 impl Diverge for offdict<Strprox> {
@@ -119,6 +137,31 @@ impl Diverge for offdict<Strprox> {
             res.push(self.retrieve(s).unwrap());
         }
         Ok(res)
+    }
+    fn bench(&self, cmd: Commands) -> Result<()> {
+        match cmd {
+            Commands::bench { delay, short } => {
+                let num = 20;
+                println!("choosing {} words at random", num);
+                let mut rng = thread_rng();
+                let strvec = &self.set.as_ref().unwrap().yoke.get().trie.strings;
+                dbg!(&strvec[2000..2006]);
+                let word = strvec.choose_multiple(&mut rng, num);
+                for q in word {
+                    if q.len() > 10 {
+                        continue;
+                    }
+                    println!("query \"{}\"", q);
+                    self.candidates(&q, TopkParam::new(3))?;
+                    if delay {
+                        std::thread::sleep(Duration::from_micros(200));
+                    }
+                }
+            }
+            _ => unreachable!(),
+        }
+
+        Ok(())
     }
 }
 
@@ -248,11 +291,14 @@ impl<Ix: Indexer> offdict<Ix> {
                 bail!("Error getting dict name for {}", entr)
             }
         }
+        println!("importing {} files", pendin.len());
         pendin.into_iter().for_each(|(p, e)| {
             self.import_from_file(p.as_str(), e.as_str()).unwrap();
         });
+        let stat = self.stat();
+        println!("{}", stat);
 
-        self.db.write().unwrap().flush();
+        self.db.write().unwrap().flush()?;
 
         Ok(())
     }
@@ -518,7 +564,7 @@ impl Def {
 use clap::{Parser, Subcommand};
 #[allow(non_camel_case_types)]
 #[derive(Debug, Subcommand)]
-enum Commands {
+pub enum Commands {
     #[command(
         about = "Import definitions from an yaml file",
         arg_required_else_help = false
@@ -566,7 +612,10 @@ struct Cli {
     command: Option<Commands>,
 }
 
-pub fn process_cmd(db: &mut offdict<Strprox>) -> Result<bool> {
+pub fn process_cmd<'a, D: Indexer>(db: impl FnOnce() -> Result<&'a mut offdict<D>>) -> Result<bool>
+where
+    offdict<D>: Diverge,
+{
     let args = Cli::parse();
 
     match args.command {
@@ -585,7 +634,7 @@ pub fn process_cmd(db: &mut offdict<Strprox>) -> Result<bool> {
 
                 return Ok(false);
             } else {
-                match db.import_glob(&path) {
+                match db()?.import_glob(&path) {
                     Ok(()) => println!("imported"),
                     Err(e) => println!("{:?}", e),
                 }
@@ -593,54 +642,38 @@ pub fn process_cmd(db: &mut offdict<Strprox>) -> Result<bool> {
             Ok(false)
         }
         Some(Commands::stat {}) => {
-            let s = db.stat();
-            println!("Words in database: {}. ", s.words);
-            if let Some(uw) = s.unique_words {
-                println!("In the index: {} unique words", uw);
-            }
+            let s = db()?.stat();
+            println!("{}", s);
             Ok(false)
         }
         Some(Commands::lookup { query }) => {
-            for d in db.search(&query, 1, true)? {
+            for d in db()?.search(&query, 1, true)? {
                 let list: Vec<Def> = d.vec_human();
                 println!("{}", serde_yaml::to_string::<Vec<Def>>(&list)?)
             }
             Ok(false)
         }
         Some(Commands::reset {}) => {
-            rmdata(&db);
+            rmdata(db()?)?;
             println!("reset.");
             Ok(false)
         }
         Some(Commands::build {}) => {
-            let c = db.build_index_from_db()?;
+            let c = db()?.build_index_from_db()?;
             println!("built, {} words", c);
             Ok(true)
         }
-        Some(Commands::bench { delay, short }) => {
-            #[cfg(feature = "fst")]
-            let fstdb = offdict::<fstmmap>::from_db(db.db.clone(), db.dirpath.clone())?;
-            let num = 20;
-            println!("choosing {} words at random", num);
-            let mut rng = thread_rng();
-            let strvec = &db.set.as_ref().unwrap().yoke.get().trie.strings;
-            dbg!(&strvec[2000..2006]);
-            let word = strvec.choose_multiple(&mut rng, num);
-            for q in word {
-                if q.len() > 10 {
-                    continue;
+        None => Ok(true),
+        Some(keep) => {
+            let db = db()?;
+            match &keep {
+                Commands::bench { .. } => {
+                    db.bench(keep)?;
                 }
-                println!("query \"{}\"", q);
-                db.candidates(&q, TopkParam::new(3));
-                print!("fst: ");
-                fstdb.candidates(&q, false);
-                if delay {
-                    std::thread::sleep(Duration::from_micros(200));
-                }
+                _ => (),
             }
             Ok(true)
         }
-        None => Ok(true),
     }
 }
 
@@ -660,6 +693,14 @@ use tokio::{self};
 use warp::Filter;
 
 pub static mut DB: Option<offdict<Strprox>> = None;
+
+pub fn init_db(db_path: PathBuf) -> Result<&'static mut offdict<Strprox>> {
+    if let Some(_o) = unsafe { &DB } {
+    } else {
+        unsafe { DB = Some(offdict::<Strprox>::open_db(db_path)?) };
+    }
+    Ok(unsafe { DB.as_mut() }.unwrap())
+}
 
 pub mod config;
 
@@ -756,9 +797,10 @@ where
         }
     }
 }
-async fn readline() -> Result<String> {
+
+pub async fn readline() -> Result<String> {
     let mut out = tokio::io::stdout();
-    out.write_all(b"@ ").await?;
+    out.write_all("# ".purple().to_string().as_bytes()).await?;
     out.flush().await?;
     let mut buffer = Vec::new();
     tokio::io::stdin().read(&mut buffer).await?;

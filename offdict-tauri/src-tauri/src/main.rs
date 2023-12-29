@@ -298,7 +298,7 @@ struct set_input {
 // has results ?
 fn on_input(s: &str, expensive: bool) -> Result<bool> {
     let db = unsafe { DB.as_ref().unwrap() };
-    let mut d = db.search(s, 5, expensive)?;
+    let mut d = db.search(s, 4, expensive)?;
     let mut def_list = offdictd::flatten_human(d);
 
     unsafe {
@@ -321,19 +321,12 @@ fn main() -> Result<()> {
     let dont_hide = true; // minimize instead of hiding
                           // FIXME: Temp fix for wayland where shortcut doesnt bring the window back.
     println!("{:?}", conf);
-    let mut db = offdict::<Strprox>::open_db(db_path)?;
-    unsafe {
-        DB = Some(db);
-    }
-    let mut db = unsafe { DB.as_mut() }.unwrap();
-    db.set_input = Some(on_input);
-    if !offdictd::process_cmd(&mut db).unwrap() {
+
+    if !process_cmd(|| init_db(db_path.clone()))? {
         return Ok(());
     }
-    let db = &*db;
-    if cfg!(target_os = "linux") {
-        env::set_var("GDK_BACKEND", "x11"); // TODO: Wayland when it stop sucking
-    }
+    let db = init_db(db_path)?;
+    db.set_input = Some(on_input);
 
     let ta = tauri::Builder::default()
         .setup(move |app| {
@@ -436,7 +429,7 @@ fn main() -> Result<()> {
             }
 
             // let state: tauri::State<OffdictState> = app.state();
-            tauri::async_runtime::spawn(serve(&db));
+            tauri::async_runtime::spawn(serve(db));
 
             let mut m = Master::new(Handler {
                 app: app.get_window("main").unwrap(),

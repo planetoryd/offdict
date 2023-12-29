@@ -19,12 +19,8 @@ fn main() -> Result<()> {
 }
 
 fn newix(db_path: PathBuf) -> Result<()> {
-    let mut db = offdict::<Strprox>::open_db(db_path)?;
-    process_cmd(&mut db)?;
-    unsafe {
-        DB = Some(db);
-    }
-    let db = unsafe { DB.as_mut() }.unwrap();
+    process_cmd(|| init_db(db_path.clone()))?;
+    let db = init_db(db_path)?;
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async move {
         if let Some(ref set) = db.set {
