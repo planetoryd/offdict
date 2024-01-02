@@ -13,7 +13,7 @@ use gtk::{
 use gtk::{prelude::*, HeaderBar};
 // use lazy_regex;
 use lazy_regex::{lazy_regex, Lazy};
-use offdictd::{self, def_bin::WrapperDef, topk::Strprox, *};
+use offdictd::{self, config::OffdictConfig, def_bin::WrapperDef, topk::Strprox, *};
 use std::io;
 use std::{
     borrow::Cow, collections::BTreeSet, env, fs, iter::FromIterator, path::PathBuf, sync::Arc,
@@ -118,7 +118,9 @@ fn test_clip() {
     );
 }
 
-pub struct OffdictState {}
+pub struct OffdictState {
+    conf: OffdictConfig,
+}
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 
@@ -126,7 +128,7 @@ pub struct OffdictState {}
 #[tauri::command]
 fn input<'a>(
     state: tauri::State<'a, OffdictState>,
-    query: &'a str,
+    query: String,
     expensive: bool,
 ) -> Result<(), &'static str> {
     on_input(query, expensive);
@@ -267,12 +269,12 @@ fn input_header(win: Window) -> HeaderBar {
     });
     en.connect_changed(|e| {
         dbg!(e.text());
-        on_input(e.text().as_str(), false);
+        on_input(e.text().to_string(), false);
     });
     en.connect_key_press_event(move |e, k| {
         if k.keyval() == gdk::keys::constants::Return {
             println!("expensive search");
-            on_input(e.text().as_str(), true);
+            on_input(e.text().to_string(), true);
         } else if k.keyval() == gdk::keys::constants::Escape {
             save_pos(&win);
             win.hide().unwrap();
@@ -296,22 +298,30 @@ struct set_input {
 }
 
 // has results ?
-fn on_input(s: &str, expensive: bool) -> Result<bool> {
-    let db = unsafe { DB.as_ref().unwrap() };
-    let mut d = db.search(s, 4, expensive)?;
-    let mut def_list = offdictd::flatten_human(d);
+fn on_input(s: String, expensive: bool) -> Result<()> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Some(ref mut db) = unsafe { &mut DB } {
+            let mut d = db.search(&s, 4, expensive)?;
+            let mut def_list = offdictd::flatten_human(d);
 
-    unsafe {
-        let si = set_input {
-            inputWord: s.to_owned(),
-            extensive: expensive,
-        };
-        w.as_ref().unwrap().emit("set_input", si).unwrap();
-    }
-    unsafe {
-        w.as_ref().unwrap().emit("def_list", &def_list).unwrap();
-    }
-    Ok(def_list.is_empty())
+            unsafe {
+                let si = set_input {
+                    inputWord: s.to_owned(),
+                    extensive: expensive,
+                };
+                w.as_ref().unwrap().emit("set_input", si).unwrap();
+            }
+            unsafe {
+                w.as_ref().unwrap().emit("def_list", &def_list).unwrap();
+            }
+        } else {
+            println!("DB not inited yet");
+        }
+
+        anyhow::Ok(())
+    });
+
+    Ok(())
 }
 
 fn main() -> Result<()> {
@@ -325,13 +335,10 @@ fn main() -> Result<()> {
     if !process_cmd(|| init_db(db_path.clone()))? {
         return Ok(());
     }
-    let db = init_db(db_path)?;
-    db.set_input = Some(on_input);
 
     let ta = tauri::Builder::default()
         .setup(move |app| {
             println!("{}", env::current_dir().unwrap().to_str().unwrap());
-            println!("{:?}", conf);
             let window = app.get_window("main").unwrap();
             let w_on_ev = app.get_window("main").unwrap();
             let w_on_shortcut = app.get_window("main").unwrap();
@@ -427,9 +434,7 @@ fn main() -> Result<()> {
                     println!("cannot reg global shortcut {:?}", x)
                 }
             }
-
             // let state: tauri::State<OffdictState> = app.state();
-            tauri::async_runtime::spawn(serve(db));
 
             let mut m = Master::new(Handler {
                 app: app.get_window("main").unwrap(),
@@ -441,11 +446,21 @@ fn main() -> Result<()> {
                 println!("clipboard ..");
                 m.run().unwrap()
             });
+
             Ok(())
         })
-        .manage(OffdictState {})
-        .invoke_handler(tauri::generate_handler![input, import]);
+        .on_page_load(|a, b| {
+            static mut RUN_ONCE: bool = false;
+            unsafe { RUN_ONCE = if RUN_ONCE { return } else { true } }
 
+            tauri::async_runtime::spawn_blocking(move || {
+                let db = init_db(a.state::<OffdictState>().conf.data_path.clone()).unwrap();
+                db.set_input = Some(on_input);
+                tauri::async_runtime::spawn(serve(db));
+            });
+        })
+        .manage(OffdictState { conf })
+        .invoke_handler(tauri::generate_handler![input, import]);
     ta.run(tauri::generate_context!())
         .expect("error while running tauri application");
     Ok(())

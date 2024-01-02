@@ -79,7 +79,8 @@ pub struct offdict<index: Indexer> {
     db: Arc<RwLock<rocks>>,
     pub set: Option<index>,
     dirpath: PathBuf,
-    pub set_input: Option<fn(&str, bool) -> Result<bool>>,
+    /// Request the desktop client to query a word and display it.
+    pub set_input: Option<fn(String, bool) -> Result<()>>,
 }
 
 pub trait Indexer: Sized + 'static {
@@ -715,9 +716,7 @@ pub struct ApiOpts {
 }
 
 #[derive(Deserialize, Default, Serialize)]
-pub struct SetRes {
-    defs: bool, // true means result is empty
-}
+pub struct SetRes;
 
 pub async fn serve<Ix: Indexer + Send + Sync + 'static>(db: &'static offdict<Ix>) -> Result<()>
 where
@@ -756,11 +755,11 @@ where
                 .decode_utf8()
                 .unwrap()
                 .to_string();
-            let mut r: SetRes = SetRes { defs: false };
+            // let mut r: SetRes = SetRes { defs: false };
             if db.set_input.is_some() {
-                r.defs = db.set_input.unwrap()(&word, false).unwrap();
+                db.set_input.unwrap()(word, false).unwrap();
             }
-            warp::reply::json(&r)
+            warp::reply::json(&SetRes)
         });
 
     Ok(warp::serve(lookup.or(stat).or(set))

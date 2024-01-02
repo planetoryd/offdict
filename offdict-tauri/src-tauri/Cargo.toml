@@ -25,6 +25,7 @@ timed = "0.1.5"
 gtk = "0.15.5"
 gdkx11 = "0.15.5"
 lazy-regex = "2.3.1"
+anyhow = "1.0.79"
 
 [features]
 # by default Tauri runs in production mode

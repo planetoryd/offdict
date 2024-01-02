@@ -1,9 +1,11 @@
+use std::path::PathBuf;
+
 use config::{Config, File, FileFormat};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct OffdictConfig {
-    pub data_path: String,
+    pub data_path: PathBuf,
     pub hide_on_blur: bool,
 }
 
