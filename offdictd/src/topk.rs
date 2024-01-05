@@ -35,6 +35,7 @@ impl Indexer for Strprox {
                 bincode::deserialize(data)
             })?,
         };
+        println!("index loaded");
         Ok(sel)
     }
     #[timed]
