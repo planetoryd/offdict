@@ -1,12 +1,12 @@
 use anyhow::{anyhow, Result};
-use strprox::{Autocompleter, TreeStringT};
+use strprox::{MetaAutocompleter, TreeStringT};
 use yoke::{Yoke, Yokeable};
 
-use crate::*;
+use crate::*;   
 use crate::{candidates, Indexer};
 
 pub struct Strprox {
-    pub yoke: Yoke<Autocompleter<'static>, Mmap>,
+    pub yoke: Yoke<MetaAutocompleter<'static>, Mmap>,
 }
 
 #[derive(new)]
@@ -22,7 +22,7 @@ impl Indexer for Strprox {
             .into_iter()
             .map(|k| TreeStringT::from_owned(k))
             .collect();
-        let set = Autocompleter::new(arr.len(), arr);
+        let set = MetaAutocompleter::new(arr.len(), arr);
         let mut fw = std::fs::File::create(pp)?;
         bincode::serialize_into(&mut fw, &set)?;
         Ok(())
@@ -41,7 +41,7 @@ impl Indexer for Strprox {
     #[timed]
     fn query(&self, query: &str, param: TopkParam) -> Result<crate::candidates> {
         let topk = self.yoke.get();
-        let rx = topk.autocomplete(query, param.num);
+        let rx = topk.threshold_topk(query, param.num, 2);
         let cands: Vec<_> = rx.into_iter().map(|k| k.string).collect();
         Ok(cands)
     }
