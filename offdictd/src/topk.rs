@@ -47,8 +47,9 @@ impl Indexer for Strprox {
     fn query(&self, query: &str, param: TopkParam) -> Result<crate::candidates> {
         let mut lk = self.cache.lock().unwrap();
         let topk = self.yoke.get();
-        let rx = topk.autocomplete(query, &mut lk);
-        dbg!(&rx[..2]);
+        let mut rx = topk.autocomplete(query, &mut lk);
+        dbg!(&rx[..min(2, rx.len())]);
+        rx.truncate(10);
         let cands: Vec<_> = rx.into_iter().map(|k| k.string).collect();
         Ok(cands)
     }
