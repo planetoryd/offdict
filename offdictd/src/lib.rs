@@ -762,6 +762,7 @@ where
             warp::reply::json(&SetRes)
         });
 
+    println!("API listening on :3030");
     Ok(warp::serve(lookup.or(stat).or(set))
         .run(([0, 0, 0, 0], 3030)) // XXX: this has to be hard coded, who cares
         .await)
