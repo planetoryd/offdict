@@ -1,4 +1,7 @@
+use std::sync::Mutex;
+
 use anyhow::{anyhow, Result};
+use strprox::prefix::meta::Cache;
 use strprox::{MetaAutocompleter, TreeStringT};
 use yoke::{Yoke, Yokeable};
 
@@ -7,6 +10,7 @@ use crate::{candidates, Indexer};
 
 pub struct Strprox {
     pub yoke: Yoke<MetaAutocompleter<'static>, Mmap>,
+    pub cache: Mutex<Cache<'static>>
 }
 
 #[derive(new)]
@@ -34,14 +38,18 @@ impl Indexer for Strprox {
             yoke: Yoke::try_attach_to_cart(unsafe { Mmap::map(&f) }?, |data| {
                 bincode::deserialize(data)
             })?,
+            cache: Default::default()
         };
         println!("index loaded");
         Ok(sel)
     }
     #[timed]
     fn query(&self, query: &str, param: TopkParam) -> Result<crate::candidates> {
+        let mut lk = self.cache.lock().unwrap();
         let topk = self.yoke.get();
-        let rx = topk.threshold_topk(query, param.num, 2);
+        let mut rx = topk.autocomplete(query, &mut lk);
+        dbg!(&rx[..min(2, rx.len())]);
+        rx.truncate(10);
         let cands: Vec<_> = rx.into_iter().map(|k| k.string).collect();
         Ok(cands)
     }

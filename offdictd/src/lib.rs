@@ -64,7 +64,7 @@ pub struct stat {
 
 impl std::fmt::Display for stat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("Entries in database, {}.", self.words))?;
+        f.write_fmt(format_args!("Entries in database, {}. ", self.words))?;
         if let Some(uw) = &self.unique_words {
             f.write_fmt(format_args!("Unique words in index, {}.", uw))
         } else {
@@ -762,6 +762,7 @@ where
             warp::reply::json(&SetRes)
         });
 
+    println!("API listening on :3030");
     Ok(warp::serve(lookup.or(stat).or(set))
         .run(([0, 0, 0, 0], 3030)) // XXX: this has to be hard coded, who cares
         .await)
