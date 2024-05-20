@@ -277,7 +277,7 @@ fn input_header(win: Window) -> HeaderBar {
             on_input(e.text().to_string(), true);
         } else if k.keyval() == gdk::keys::constants::Escape {
             save_pos(&win);
-            win.hide().unwrap();
+            win.minimize().unwrap();
         }
         Inhibit::default()
     });
